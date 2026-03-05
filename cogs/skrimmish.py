@@ -127,50 +127,22 @@ class QueueView(discord.ui.View):
     async def update_queue_display(self, interaction: discord.Interaction):
         """Update the queue embed display"""
         queue = await db.get_queue()
+        queue_count = len(queue)
         
+        # Create embed with styling similar to the reference image
         embed = discord.Embed(
-            title="🎮 Skrimmish Queue (1v1)",
-            description="Click **Join Queue** to enter the queue!\nFirst 2 players will be matched automatically.",
-            color=discord.Color.blue()
+            title="Valorant Mobile India Matchmaking Queue",
+            color=0xFD4556  # Red color similar to Valorant theme
         )
         
-        # Add queue slots
-        if len(queue) >= 1:
-            embed.add_field(
-                name="Slot 1 👤",
-                value=f"<@{queue[0]['user_id']}>",
-                inline=True
-            )
-        else:
-            embed.add_field(
-                name="Slot 1 ⭕",
-                value="*Empty*",
-                inline=True
-            )
+        # Add queue count
+        embed.add_field(
+            name=f"Queue {queue_count}/2",
+            value="\n".join([f"<@{player['user_id']}>" for player in queue]) if queue else "*No players in queue*",
+            inline=False
+        )
         
-        if len(queue) >= 2:
-            embed.add_field(
-                name="Slot 2 👤",
-                value=f"<@{queue[1]['user_id']}>",
-                inline=True
-            )
-        else:
-            embed.add_field(
-                name="Slot 2 ⭕",
-                value="*Empty*",
-                inline=True
-            )
-        
-        # Additional players waiting
-        if len(queue) > 2:
-            waiting = [f"<@{player['user_id']}>" for player in queue[2:]]
-            embed.add_field(
-                name=f"⏳ Waiting ({len(queue) - 2})",
-                value="\n".join(waiting),
-                inline=False
-            )
-        
-        embed.set_footer(text=f"Total in queue: {len(queue)}")
+        embed.timestamp = discord.utils.utcnow()
         
         # Update the message
         if self.message:
@@ -224,14 +196,17 @@ class SkrimmishCog(commands.Cog):
             
             # Create the queue embed
             embed = discord.Embed(
-                title="🎮 Skrimmish Queue (1v1)",
-                description="Click **Join Queue** to enter the queue!\nFirst 2 players will be matched automatically.",
-                color=discord.Color.blue()
+                title="Valorant Mobile India Matchmaking Queue",
+                color=0xFD4556  # Red color similar to Valorant theme
             )
             
-            embed.add_field(name="Slot 1 ⭕", value="*Empty*", inline=True)
-            embed.add_field(name="Slot 2 ⭕", value="*Empty*", inline=True)
-            embed.set_footer(text="Total in queue: 0")
+            embed.add_field(
+                name="Queue 0/2",
+                value="*No players in queue*",
+                inline=False
+            )
+            
+            embed.timestamp = discord.utils.utcnow()
             
             # Send the new message
             message = await channel.send(embed=embed, view=self.queue_view)
@@ -270,14 +245,17 @@ class SkrimmishCog(commands.Cog):
         
         # Create the queue embed
         embed = discord.Embed(
-            title="🎮 Skrimmish Queue (1v1)",
-            description="Click **Join Queue** to enter the queue!\nFirst 2 players will be matched automatically.",
-            color=discord.Color.blue()
+            title="Valorant Mobile India Matchmaking Queue",
+            color=0xFD4556  # Red color similar to Valorant theme
         )
         
-        embed.add_field(name="Slot 1 ⭕", value="*Empty*", inline=True)
-        embed.add_field(name="Slot 2 ⭕", value="*Empty*", inline=True)
-        embed.set_footer(text="Total in queue: 0")
+        embed.add_field(
+            name="Queue 0/2",
+            value="*No players in queue*",
+            inline=False
+        )
+        
+        embed.timestamp = discord.utils.utcnow()
         
         # Send the message with buttons
         await interaction.response.send_message(
