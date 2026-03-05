@@ -211,8 +211,9 @@ class SkrimmishCog(commands.Cog):
                 except:
                     print(f"⚠️ Could not delete old queue message (may have been deleted already)")
             
-            # Clear the queue
-            await db.clear_queue()
+            # Get existing queue from database (DON'T clear it - persistent queue!)
+            queue = await db.get_queue()
+            queue_count = len(queue)
             
             # Create the queue embed matching NeatQueue style
             embed = discord.Embed(
@@ -220,9 +221,15 @@ class SkrimmishCog(commands.Cog):
                 color=0xED4245  # Discord red/NeatQueue red
             )
             
+            # Show existing queue
+            if queue:
+                players_text = ", ".join([f"<@{player['user_id']}>" for player in queue])
+            else:
+                players_text = "*No players in queue*"
+            
             embed.add_field(
-                name="Queue 0/2",
-                value="*No players in queue*",
+                name=f"\nQueue {queue_count}/2\n",
+                value=f"{players_text}\n\u200b",
                 inline=False
             )
             
@@ -246,8 +253,9 @@ class SkrimmishCog(commands.Cog):
     async def setup_queue(self, interaction: discord.Interaction):
         """Setup the queue UI in the current channel (manual)"""
         
-        # Clear any existing queue
-        await db.clear_queue()
+        # Get existing queue from database (persistent)
+        queue = await db.get_queue()
+        queue_count = len(queue)
         
         # Get old message if exists
         old_message_id = await db.get_config('queue_message_id')
@@ -269,9 +277,15 @@ class SkrimmishCog(commands.Cog):
             color=0xED4245  # Discord red/NeatQueue red
         )
         
+        # Show existing queue
+        if queue:
+            players_text = ", ".join([f"<@{player['user_id']}>" for player in queue])
+        else:
+            players_text = "*No players in queue*"
+        
         embed.add_field(
-            name="Queue 0/2",
-            value="*No players in queue*",
+            name=f"\nQueue {queue_count}/2\n",
+            value=f"{players_text}\n\u200b",
             inline=False
         )
         
