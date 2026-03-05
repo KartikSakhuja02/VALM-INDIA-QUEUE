@@ -6,45 +6,198 @@ import os
 import asyncio
 import random
 from typing import Optional
+from datetime import datetime
 
 # Dictionary to track active matches
 active_matches = {}
 
-class SubmitButton(discord.ui.Button):
-    """Button for submitting match screenshot"""
-    def __init__(self, host_id: int):
+class VoteButton(discord.ui.Button):
+    """Button for voting on match winner"""
+    def __init__(self, team_name: str, match_id: str, style: discord.ButtonStyle):
         super().__init__(
-            style=discord.ButtonStyle.green,
-            label="Submit Result"
+            style=style,
+            label=team_name
         )
-        self.host_id = host_id
+        self.team_name = team_name
+        self.match_id = match_id
     
     async def callback(self, interaction: discord.Interaction):
-        # Only non-host can submit
-        if interaction.user.id == self.host_id:
-            await interaction.response.send_message(
-                "You cannot submit the result as you are the host. The other player must submit.",
-                ephemeral=True
-            )
+        match_data = active_matches.get(self.match_id)
+        if not match_data:
+            await interaction.response.send_message("Match data not found.", ephemeral=True)
             return
         
-        # Acknowledge interaction
-        await interaction.response.send_message(
-            "Please upload your screenshot within 2 minutes.",
-            ephemeral=True
+        # Check if user already voted
+        if interaction.user.id in match_data['voters']:
+            await interaction.response.send_message("You have already voted!", ephemeral=True)
+            return
+        
+        # Record vote
+        match_data['voters'].add(interaction.user.id)
+        match_data['votes'][self.team_name] += 1
+        
+        # Update the embed
+        await self.view.update_vote_display(interaction)
+        
+        # Check if any team has 2 votes
+        team1_name = match_data['team1_name']
+        team2_name = match_data['team2_name']
+        
+        if match_data['votes'][team1_name] >= 2:
+            await self.view.finalize_match(self.match_id, team1_name, interaction)
+        elif match_data['votes'][team2_name] >= 2:
+            await self.view.finalize_match(self.match_id, team2_name, interaction)
+        else:
+            await interaction.response.defer()
+
+class VoteView(discord.ui.View):
+    """View containing voting buttons"""
+    def __init__(self, match_id: str, team1_name: str, team2_name: str, bot):
+        super().__init__(timeout=None)
+        self.match_id = match_id
+        self.team1_name = team1_name
+        self.team2_name = team2_name
+        self.bot = bot
+        self.message: Optional[discord.Message] = None
+        
+        # Add vote buttons (red style like NeatQueue)
+        self.add_item(VoteButton(team1_name, match_id, discord.ButtonStyle.red))
+        self.add_item(VoteButton(team2_name, match_id, discord.ButtonStyle.red))
+    
+    async def update_vote_display(self, interaction: discord.Interaction):
+        """Update the voting embed with current vote counts"""
+        match_data = active_matches.get(self.match_id)
+        if not match_data:
+            return
+        
+        team1_votes = match_data['votes'][self.team1_name]
+        team2_votes = match_data['votes'][self.team2_name]
+        match_number = match_data['match_number']
+        
+        embed = discord.Embed(
+            title=f"Winner For Queue#{match_number:04d}",
+            color=0xED4245
         )
         
-        # Wait for screenshot (we'll implement later)
-        # For now, just acknowledge
-        await interaction.channel.send(
-            f"{interaction.user.mention} Please upload your match result screenshot in this channel within 2 minutes."
+        votes_needed = 2 - max(team1_votes, team2_votes)
+        
+        embed.add_field(
+            name=self.team1_name,
+            value=f"Votes: {team1_votes}",
+            inline=True
         )
-
-class SubmitView(discord.ui.View):
-    """View containing the submit button"""
-    def __init__(self, host_id: int):
-        super().__init__(timeout=None)
-        self.add_item(SubmitButton(host_id))
+        embed.add_field(
+            name=self.team2_name,
+            value=f"Votes: {team2_votes}",
+            inline=True
+        )
+        embed.add_field(
+            name="\u200b",
+            value=f"{votes_needed} more votes required!",
+            inline=False
+        )
+        
+        if self.message:
+            try:
+                await self.message.edit(embed=embed, view=self)
+            except:
+                pass
+    
+    async def finalize_match(self, match_id: str, winner_name: str, interaction: discord.Interaction):
+        """Finalize the match and send logs"""
+        match_data = active_matches.get(match_id)
+        if not match_data:
+            return
+        
+        # Disable all buttons
+        for item in self.children:
+            item.disabled = True
+        
+        # Update final embed
+        embed = discord.Embed(
+            title=f"Winner For Queue#{match_data['match_number']:04d}",
+            description=f"**{winner_name}** wins!",
+            color=0x00FF00
+        )
+        
+        team1_votes = match_data['votes'][self.team1_name]
+        team2_votes = match_data['votes'][self.team2_name]
+        
+        embed.add_field(
+            name=self.team1_name,
+            value=f"Votes: {team1_votes}",
+            inline=True
+        )
+        embed.add_field(
+            name=self.team2_name,
+            value=f"Votes: {team2_votes}",
+            inline=True
+        )
+        
+        if self.message:
+            await self.message.edit(embed=embed, view=self)
+        
+        # Send to logs channel
+        await self.send_match_logs(match_data, winner_name)
+        
+        # Clean up channels after 30 seconds
+        await asyncio.sleep(30)
+        try:
+            await match_data['text_channel'].delete()
+            await match_data['voice_channel'].delete()
+        except:
+            pass
+        
+        # Remove from active matches
+        if match_id in active_matches:
+            del active_matches[match_id]
+    
+    async def send_match_logs(self, match_data: dict, winner_name: str):
+        """Send detailed match logs to logs channel"""
+        logs_channel_id = int(os.getenv('LOGS_CHANNEL_ID', 0))
+        if not logs_channel_id:
+            print("⚠️ LOGS_CHANNEL_ID not set, skipping logs")
+            return
+        
+        logs_channel = self.bot.get_channel(logs_channel_id)
+        if not logs_channel:
+            print(f"❌ Logs channel {logs_channel_id} not found")
+            return
+        
+        member1 = match_data['player1']
+        member2 = match_data['player2']
+        match_number = match_data['match_number']
+        timestamp = datetime.utcnow().strftime("%d %B %Y %H:%M")
+        
+        # Create results embed
+        embed = discord.Embed(
+            title=f"Results for Queue#{match_number:04d}",
+            color=0xED4245
+        )
+        
+        # Match Info section
+        match_info = (
+            f"Queue: player_stats\n"
+            f"Map: valorant\n"
+            f"Lobby Details:\n"
+            f"Timestamp: {timestamp}"
+        )
+        embed.add_field(name="Match Info", value=match_info, inline=False)
+        
+        # Team 1 (winner gets trophy)
+        team1_name = match_data['team1_name']
+        team1_display = f"{member1.mention}"
+        embed.add_field(name=team1_name, value=team1_display, inline=False)
+        
+        # Team 2
+        team2_name = match_data['team2_name']
+        team2_display = f"{member2.mention}"
+        embed.add_field(name=team2_name, value=team2_display, inline=False)
+        
+        embed.set_footer(text=f"Winner: {winner_name}")
+        
+        await logs_channel.send(embed=embed)
+        print(f"✅ Sent match logs for #{match_number:04d} to logs channel")
 
 class QueueButton(discord.ui.Button):
     """Button for joining the queue"""
@@ -142,14 +295,21 @@ class QueueButton(discord.ui.Button):
                 overwrites=overwrites
             )
             
-            # Store match info
+            # Store match info with vote tracking
+            team1_name = str(member1.display_name)
+            team2_name = str(member2.display_name)
+            
             active_matches[text_channel.id] = {
                 'match_number': match_number,
                 'player1': member1,
                 'player2': member2,
                 'text_channel': text_channel,
                 'voice_channel': voice_channel,
-                'match_id': match_id
+                'match_id': match_id,
+                'team1_name': team1_name,
+                'team2_name': team2_name,
+                'votes': {team1_name: 0, team2_name: 0},
+                'voters': set()
             }
             
             # Send initial message asking players to join VC
@@ -405,15 +565,45 @@ class QueueView(discord.ui.View):
             )
             await text_channel.send(embed=guest_embed)
             
-            # Send good luck message with submit button
+            # Send good luck message
             glhf_embed = discord.Embed(
                 title="Match In Progress",
-                description=f"{member1.mention} vs {member2.mention}\n\nGood luck, have fun!\n\nOnce the match is complete, {guest.mention} should submit the result using the button below.",
+                description=f"{member1.mention} vs {member2.mention}\n\nGood luck, have fun!",
                 color=0xED4245
             )
+            await text_channel.send(embed=glhf_embed)
             
-            submit_view = SubmitView(host.id)
-            await text_channel.send(embed=glhf_embed, view=submit_view)
+            # Wait a bit for match to complete, then send voting UI
+            await asyncio.sleep(5)
+            
+            # Create and send voting UI
+            team1_name = match_data['team1_name']
+            team2_name = match_data['team2_name']
+            match_number = match_data['match_number']
+            
+            vote_embed = discord.Embed(
+                title=f"Winner For Queue#{match_number:04d}",
+                color=0xED4245
+            )
+            vote_embed.add_field(
+                name=team1_name,
+                value="Votes: 0",
+                inline=True
+            )
+            vote_embed.add_field(
+                name=team2_name,
+                value="Votes: 0",
+                inline=True
+            )
+            vote_embed.add_field(
+                name="\u200b",
+                value="2 more votes required!",
+                inline=False
+            )
+            
+            vote_view = VoteView(text_channel.id, team1_name, team2_name, self.bot)
+            vote_message = await text_channel.send(embed=vote_embed, view=vote_view)
+            vote_view.message = vote_message
             
         except asyncio.TimeoutError:
             # Host didn't send room code in time

@@ -204,6 +204,7 @@ VALM-India-Queue/
 - `DATABASE_URL` - PostgreSQL database connection string (required)
 - `QUEUE_CHANNEL_ID` - Channel ID where the queue UI will be posted on bot startup (required)
 - `MATCH_CATEGORY_ID` - Category ID where private match text/voice channels will be created (required)
+- `LOGS_CHANNEL_ID` - Channel ID where match results will be logged (required)
 
 ### Getting Channel/Category IDs
 
