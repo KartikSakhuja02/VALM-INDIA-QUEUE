@@ -267,25 +267,38 @@ class QueueView(discord.ui.View):
     
     async def handle_match_flow(self, text_channel_id: int):
         """Handle the complete match flow with timers and state checks"""
-        match_data = active_matches.get(text_channel_id)
-        if not match_data:
-            return
-        
-        text_channel = match_data['text_channel']
-        voice_channel = match_data['voice_channel']
-        member1 = match_data['player1']
-        member2 = match_data['player2']
-        
-        # Wait 4 minutes
-        await asyncio.sleep(240)
-        
-        # Check who's in the voice channel
-        members_in_vc = voice_channel.members
-        player1_in_vc = member1 in members_in_vc
-        player2_in_vc = member2 in members_in_vc
-        
-        # Send warnings based on who's in VC
-        if not player1_in_vc and not player2_in_vc:
+        try:
+            match_data = active_matches.get(text_channel_id)
+            if not match_data:
+                print(f"❌ No match data found for channel {text_channel_id}")
+                return
+            
+            text_channel = match_data['text_channel']
+            voice_channel = match_data['voice_channel']
+            member1 = match_data['player1']
+            member2 = match_data['player2']
+            guild = text_channel.guild
+            
+            print(f"✅ Starting match flow for {match_data['match_number']:04d}")
+            
+            # Wait 4 minutes
+            await asyncio.sleep(240)
+            
+            # Fetch fresh voice channel to get current members
+            voice_channel = guild.get_channel(voice_channel.id)
+            if not voice_channel:
+                print(f"❌ Voice channel not found for match {text_channel_id}")
+                return
+            
+            # Check who's in the voice channel
+            members_in_vc = voice_channel.members
+            player1_in_vc = member1 in members_in_vc
+            player2_in_vc = member2 in members_in_vc
+            
+            print(f"🔍 4min check - Player1 in VC: {player1_in_vc}, Player2 in VC: {player2_in_vc}")
+            
+            # Send warnings based on who's in VC
+            if not player1_in_vc and not player2_in_vc:
             # Both missing - warn both
             warning_embed = discord.Embed(
                 title="Final Warning",
@@ -317,10 +330,18 @@ class QueueView(discord.ui.View):
         # Wait 1 more minute
         await asyncio.sleep(60)
         
+        # Fetch fresh voice channel again for final check
+        voice_channel = guild.get_channel(voice_channel.id)
+        if not voice_channel:
+            print(f"❌ Voice channel not found for final check {text_channel_id}")
+            return
+        
         # Final check
         members_in_vc = voice_channel.members
         player1_in_vc = member1 in members_in_vc
         player2_in_vc = member2 in members_in_vc
+        
+        print(f"🔍 5min check - Player1 in VC: {player1_in_vc}, Player2 in VC: {player2_in_vc}")
         
         if player1_in_vc and player2_in_vc:
             # Both joined - proceed
@@ -345,6 +366,11 @@ class QueueView(discord.ui.View):
             # Remove from active matches
             if text_channel_id in active_matches:
                 del active_matches[text_channel_id]
+        
+        except Exception as e:
+            print(f"❌ Error in handle_match_flow: {e}")
+            import traceback
+            traceback.print_exc()
     
     async def proceed_to_match(self, text_channel_id: int):
         """Proceed with match when both players are in VC"""
