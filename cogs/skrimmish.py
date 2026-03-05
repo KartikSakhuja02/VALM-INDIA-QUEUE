@@ -39,6 +39,9 @@ class QueueButton(discord.ui.Button):
         # Get updated queue
         queue = await db.get_queue()
         
+        # Update the queue display first
+        await self.view.update_queue_display(interaction)
+        
         # Check if we have 2 players (match ready)
         if len(queue) >= 2:
             # Create match with first 2 players
@@ -55,7 +58,7 @@ class QueueButton(discord.ui.Button):
                 player1['username'], player2['username']
             )
             
-            # Update the queue display
+            # Update the queue display again
             await self.view.update_queue_display(interaction)
             
             # Send match found notification
@@ -74,12 +77,9 @@ class QueueButton(discord.ui.Button):
                 embed=match_embed
             )
         else:
-            # Just update the queue display
-            await self.view.update_queue_display(interaction)
-            await interaction.response.send_message(
-                f"✅ You joined the queue! **({len(queue)}/2)**",
-                ephemeral=True
-            )
+            # Silently acknowledge the interaction
+            await interaction.response.defer()
+            await interaction.delete_original_response()
 
 class LeaveButton(discord.ui.Button):
     """Button for leaving the queue"""
@@ -106,10 +106,9 @@ class LeaveButton(discord.ui.Button):
         
         if success:
             await self.view.update_queue_display(interaction)
-            await interaction.response.send_message(
-                "✅ You left the queue.",
-                ephemeral=True
-            )
+            # Silently acknowledge the interaction
+            await interaction.response.defer()
+            await interaction.delete_original_response()
         else:
             await interaction.response.send_message(
                 "❌ Failed to leave queue. Please try again.",
@@ -145,16 +144,22 @@ class QueueView(discord.ui.View):
         queue = await db.get_queue()
         queue_count = len(queue)
         
-        # Create embed matching NeatQueue style exactly
+        # Create embed matching NeatQueue style with better spacing
         embed = discord.Embed(
             title="Valorant Mobile India Matchmaking Queue",
             color=0xED4245  # Discord red/NeatQueue red
         )
         
-        # Add queue section showing all players
+        # Add spacing and format players nicely
+        if queue:
+            players_text = ", ".join([f"<@{player['user_id']}>" for player in queue])
+        else:
+            players_text = "*No players in queue*"
+        
+        # Add queue section with extra spacing
         embed.add_field(
-            name=f"Queue {queue_count}/2",
-            value=", ".join([f"<@{player['user_id']}>" for player in queue]) if queue else "*No players in queue*",
+            name=f"\nQueue {queue_count}/2\n",
+            value=f"{players_text}\n\u200b",  # Add invisible character for spacing
             inline=False
         )
         
