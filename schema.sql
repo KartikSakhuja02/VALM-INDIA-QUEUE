@@ -1,6 +1,14 @@
 -- VALM India Queue Database Schema
 -- PostgreSQL Database Schema
 
+-- Bot Config Table
+-- Stores bot configuration like message IDs, channel IDs, etc.
+CREATE TABLE IF NOT EXISTS bot_config (
+    key VARCHAR(255) PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Skrimmish Queue Table
 -- Stores players currently in the 1v1 queue
 CREATE TABLE IF NOT EXISTS skrimmish_queue (

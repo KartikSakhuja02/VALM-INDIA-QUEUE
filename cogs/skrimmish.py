@@ -186,13 +186,80 @@ class SkrimmishCog(commands.Cog):
         self.queue_view = QueueView()
         self.queue_channel_id = int(os.getenv('QUEUE_CHANNEL_ID', 0))
     
+    async def cog_load(self):
+        """Called when the cog is loaded - setup queue UI automatically"""
+        if self.queue_channel_id:
+            await self.setup_queue_on_startup()
+    
+    async def setup_queue_on_startup(self):
+        """Setup the queue UI automatically on bot startup"""
+        try:
+            # Get the channel
+            channel = self.bot.get_channel(self.queue_channel_id)
+            if not channel:
+                print(f"❌ Queue channel {self.queue_channel_id} not found!")
+                return
+            
+            # Get old message ID from database
+            old_message_id = await db.get_config('queue_message_id')
+            
+            # Try to delete the old message
+            if old_message_id:
+                try:
+                    old_message = await channel.fetch_message(int(old_message_id))
+                    await old_message.delete()
+                    print(f"🗑️ Deleted old queue message")
+                except:
+                    print(f"⚠️ Could not delete old queue message (may have been deleted already)")
+            
+            # Clear the queue
+            await db.clear_queue()
+            
+            # Create the queue embed
+            embed = discord.Embed(
+                title="🎮 Skrimmish Queue (1v1)",
+                description="Click **Join Queue** to enter the queue!\nFirst 2 players will be matched automatically.",
+                color=discord.Color.blue()
+            )
+            
+            embed.add_field(name="Slot 1 ⭕", value="*Empty*", inline=True)
+            embed.add_field(name="Slot 2 ⭕", value="*Empty*", inline=True)
+            embed.set_footer(text="Total in queue: 0")
+            
+            # Send the new message
+            message = await channel.send(embed=embed, view=self.queue_view)
+            self.queue_view.message = message
+            
+            # Store the new message ID in database
+            await db.set_config('queue_message_id', str(message.id))
+            await db.set_config('queue_channel_id', str(self.queue_channel_id))
+            
+            print(f"✅ Queue UI setup in channel {channel.name} (ID: {self.queue_channel_id})")
+            
+        except Exception as e:
+            print(f"❌ Failed to setup queue on startup: {e}")
+    
     @app_commands.command(name="setup_queue", description="Setup the skrimmish queue in this channel")
     @app_commands.checks.has_permissions(administrator=True)
     async def setup_queue(self, interaction: discord.Interaction):
-        """Setup the queue UI in the current channel"""
+        """Setup the queue UI in the current channel (manual)"""
         
         # Clear any existing queue
         await db.clear_queue()
+        
+        # Get old message if exists
+        old_message_id = await db.get_config('queue_message_id')
+        old_channel_id = await db.get_config('queue_channel_id')
+        
+        # Try to delete old message
+        if old_message_id and old_channel_id:
+            try:
+                old_channel = self.bot.get_channel(int(old_channel_id))
+                if old_channel:
+                    old_message = await old_channel.fetch_message(int(old_message_id))
+                    await old_message.delete()
+            except:
+                pass
         
         # Create the queue embed
         embed = discord.Embed(
@@ -215,7 +282,11 @@ class SkrimmishCog(commands.Cog):
         message = await interaction.original_response()
         self.queue_view.message = message
         
-        print(f"Queue setup in channel {interaction.channel_id}")
+        # Store in database
+        await db.set_config('queue_message_id', str(message.id))
+        await db.set_config('queue_channel_id', str(interaction.channel_id))
+        
+        print(f"✅ Queue setup in channel {interaction.channel_id}")
     
     @app_commands.command(name="clear_queue", description="Clear the entire queue")
     @app_commands.checks.has_permissions(administrator=True)

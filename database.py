@@ -29,6 +29,15 @@ class Database:
     async def initialize_schema(self):
         """Initialize database schema"""
         async with self.pool.acquire() as conn:
+            # Create bot_config table for storing bot settings
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS bot_config (
+                    key VARCHAR(255) PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
             # Create skrimmish_queue table
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS skrimmish_queue (
@@ -70,6 +79,27 @@ class Database:
             ''')
             
             print("✅ Database schema initialized")
+    
+    # Bot Config Methods
+    async def set_config(self, key: str, value: str):
+        """Set a configuration value"""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                '''INSERT INTO bot_config (key, value, updated_at) 
+                   VALUES ($1, $2, CURRENT_TIMESTAMP)
+                   ON CONFLICT (key) 
+                   DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP''',
+                key, value
+            )
+    
+    async def get_config(self, key: str):
+        """Get a configuration value"""
+        async with self.pool.acquire() as conn:
+            value = await conn.fetchval(
+                'SELECT value FROM bot_config WHERE key = $1',
+                key
+            )
+            return value
     
     # Skrimmish Queue Methods
     async def add_to_queue(self, user_id: int, username: str):
