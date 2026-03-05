@@ -53,11 +53,17 @@ psql -U valmbot -d valmindiaqueue -h localhost
 If you get authentication errors, edit the pg_hba.conf file:
 
 ```bash
-# Find the config file location
+# Find the config file location (to check your PostgreSQL version)
 sudo -u postgres psql -c "SHOW hba_file;"
 
-# Edit the file (usually /etc/postgresql/*/main/pg_hba.conf)
-sudo nano /etc/postgresql/15/main/pg_hba.conf
+# Or find all pg_hba.conf files
+sudo find /etc/postgresql -name pg_hba.conf
+
+# Edit the file with your PostgreSQL version (check output above)
+# For PostgreSQL 17:
+sudo nano /etc/postgresql/17/main/pg_hba.conf
+# For PostgreSQL 15:
+# sudo nano /etc/postgresql/15/main/pg_hba.conf
 
 # Change the line:
 # local   all             all                                     peer
