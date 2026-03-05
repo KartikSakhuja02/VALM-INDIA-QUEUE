@@ -10,9 +10,9 @@ class QueueButton(discord.ui.Button):
     """Button for joining the queue"""
     def __init__(self):
         super().__init__(
-            style=discord.ButtonStyle.green,
+            style=discord.ButtonStyle.blurple,
             label="Join Queue",
-            emoji="🎮"
+            emoji=None
         )
     
     async def callback(self, interaction: discord.Interaction):
@@ -87,7 +87,7 @@ class LeaveButton(discord.ui.Button):
         super().__init__(
             style=discord.ButtonStyle.red,
             label="Leave Queue",
-            emoji="🚪"
+            emoji=None
         )
     
     async def callback(self, interaction: discord.Interaction):
@@ -116,12 +116,28 @@ class LeaveButton(discord.ui.Button):
                 ephemeral=True
             )
 
+class LeaderboardButton(discord.ui.Button):
+    """Button for viewing leaderboard"""
+    def __init__(self):
+        super().__init__(
+            style=discord.ButtonStyle.gray,
+            label="Leaderboard",
+            emoji="📊"
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_message(
+            "Leaderboard feature coming soon!",
+            ephemeral=True
+        )
+
 class QueueView(discord.ui.View):
     """Persistent view for the queue buttons"""
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(QueueButton())
         self.add_item(LeaveButton())
+        self.add_item(LeaderboardButton())
         self.message: Optional[discord.Message] = None
     
     async def update_queue_display(self, interaction: discord.Interaction):
@@ -129,16 +145,16 @@ class QueueView(discord.ui.View):
         queue = await db.get_queue()
         queue_count = len(queue)
         
-        # Create embed with styling similar to the reference image
+        # Create embed matching NeatQueue style exactly
         embed = discord.Embed(
             title="Valorant Mobile India Matchmaking Queue",
-            color=0xFD4556  # Red color similar to Valorant theme
+            color=0xED4245  # Discord red/NeatQueue red
         )
         
-        # Add queue count
+        # Add queue section showing all players
         embed.add_field(
             name=f"Queue {queue_count}/2",
-            value="\n".join([f"<@{player['user_id']}>" for player in queue]) if queue else "*No players in queue*",
+            value=", ".join([f"<@{player['user_id']}>" for player in queue]) if queue else "*No players in queue*",
             inline=False
         )
         
@@ -194,10 +210,10 @@ class SkrimmishCog(commands.Cog):
             # Clear the queue
             await db.clear_queue()
             
-            # Create the queue embed
+            # Create the queue embed matching NeatQueue style
             embed = discord.Embed(
                 title="Valorant Mobile India Matchmaking Queue",
-                color=0xFD4556  # Red color similar to Valorant theme
+                color=0xED4245  # Discord red/NeatQueue red
             )
             
             embed.add_field(
@@ -243,10 +259,10 @@ class SkrimmishCog(commands.Cog):
             except:
                 pass
         
-        # Create the queue embed
+        # Create the queue embed matching NeatQueue style
         embed = discord.Embed(
             title="Valorant Mobile India Matchmaking Queue",
-            color=0xFD4556  # Red color similar to Valorant theme
+            color=0xED4245  # Discord red/NeatQueue red
         )
         
         embed.add_field(
