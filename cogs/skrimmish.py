@@ -299,73 +299,73 @@ class QueueView(discord.ui.View):
             
             # Send warnings based on who's in VC
             if not player1_in_vc and not player2_in_vc:
-            # Both missing - warn both
-            warning_embed = discord.Embed(
-                title="Final Warning",
-                description=f"{member1.mention} {member2.mention}\n\nYou have 1 minute to join {voice_channel.mention} or the match will be cancelled.",
-                color=0xFF0000
-            )
-            await text_channel.send(embed=warning_embed)
-        elif not player1_in_vc:
-            # Only player1 missing
-            warning_embed = discord.Embed(
-                title="Final Warning",
-                description=f"{member1.mention} You have 1 minute to join {voice_channel.mention} or the match will be cancelled.",
-                color=0xFF0000
-            )
-            await text_channel.send(embed=warning_embed)
-        elif not player2_in_vc:
-            # Only player2 missing
-            warning_embed = discord.Embed(
-                title="Final Warning",
-                description=f"{member2.mention} You have 1 minute to join {voice_channel.mention} or the match will be cancelled.",
-                color=0xFF0000
-            )
-            await text_channel.send(embed=warning_embed)
-        else:
-            # Both are in VC - proceed immediately
-            await self.proceed_to_match(text_channel_id)
-            return
-        
-        # Wait 1 more minute
-        await asyncio.sleep(60)
-        
-        # Fetch fresh voice channel again for final check
-        voice_channel = guild.get_channel(voice_channel.id)
-        if not voice_channel:
-            print(f"❌ Voice channel not found for final check {text_channel_id}")
-            return
-        
-        # Final check
-        members_in_vc = voice_channel.members
-        player1_in_vc = member1 in members_in_vc
-        player2_in_vc = member2 in members_in_vc
-        
-        print(f"🔍 5min check - Player1 in VC: {player1_in_vc}, Player2 in VC: {player2_in_vc}")
-        
-        if player1_in_vc and player2_in_vc:
-            # Both joined - proceed
-            await self.proceed_to_match(text_channel_id)
-        else:
-            # Cancel match
-            cancel_embed = discord.Embed(
-                title="Match Cancelled",
-                description="Both players did not join the voice channel in time. Channels will be deleted in 10 seconds.",
-                color=0xFF0000
-            )
-            await text_channel.send(embed=cancel_embed)
-            await asyncio.sleep(10)
+                # Both missing - warn both
+                warning_embed = discord.Embed(
+                    title="Final Warning",
+                    description=f"{member1.mention} {member2.mention}\n\nYou have 1 minute to join {voice_channel.mention} or the match will be cancelled.",
+                    color=0xFF0000
+                )
+                await text_channel.send(embed=warning_embed)
+            elif not player1_in_vc:
+                # Only player1 missing
+                warning_embed = discord.Embed(
+                    title="Final Warning",
+                    description=f"{member1.mention} You have 1 minute to join {voice_channel.mention} or the match will be cancelled.",
+                    color=0xFF0000
+                )
+                await text_channel.send(embed=warning_embed)
+            elif not player2_in_vc:
+                # Only player2 missing
+                warning_embed = discord.Embed(
+                    title="Final Warning",
+                    description=f"{member2.mention} You have 1 minute to join {voice_channel.mention} or the match will be cancelled.",
+                    color=0xFF0000
+                )
+                await text_channel.send(embed=warning_embed)
+            else:
+                # Both are in VC - proceed immediately
+                await self.proceed_to_match(text_channel_id)
+                return
             
-            # Delete channels
-            try:
-                await text_channel.delete()
-                await voice_channel.delete()
-            except:
-                pass
+            # Wait 1 more minute
+            await asyncio.sleep(60)
             
-            # Remove from active matches
-            if text_channel_id in active_matches:
-                del active_matches[text_channel_id]
+            # Fetch fresh voice channel again for final check
+            voice_channel = guild.get_channel(voice_channel.id)
+            if not voice_channel:
+                print(f"❌ Voice channel not found for final check {text_channel_id}")
+                return
+            
+            # Final check
+            members_in_vc = voice_channel.members
+            player1_in_vc = member1 in members_in_vc
+            player2_in_vc = member2 in members_in_vc
+            
+            print(f"🔍 5min check - Player1 in VC: {player1_in_vc}, Player2 in VC: {player2_in_vc}")
+            
+            if player1_in_vc and player2_in_vc:
+                # Both joined - proceed
+                await self.proceed_to_match(text_channel_id)
+            else:
+                # Cancel match
+                cancel_embed = discord.Embed(
+                    title="Match Cancelled",
+                    description="Both players did not join the voice channel in time. Channels will be deleted in 10 seconds.",
+                    color=0xFF0000
+                )
+                await text_channel.send(embed=cancel_embed)
+                await asyncio.sleep(10)
+                
+                # Delete channels
+                try:
+                    await text_channel.delete()
+                    await voice_channel.delete()
+                except:
+                    pass
+                
+                # Remove from active matches
+                if text_channel_id in active_matches:
+                    del active_matches[text_channel_id]
         
         except Exception as e:
             print(f"❌ Error in handle_match_flow: {e}")
