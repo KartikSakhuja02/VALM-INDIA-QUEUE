@@ -1,0 +1,18 @@
+[Unit]
+Description=VALM India Queue Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/VALM-India-Queue
+ExecStart=/home/pi/VALM-India-Queue/venv/bin/python /home/pi/VALM-India-Queue/bot.py
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=append:/home/pi/VALM-India-Queue/logs/bot.log
+StandardError=append:/home/pi/VALM-India-Queue/logs/bot.error.log
+
+[Install]
+WantedBy=multi-user.target

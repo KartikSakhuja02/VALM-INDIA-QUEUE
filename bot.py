@@ -1,0 +1,87 @@
+import discord
+from discord import app_commands
+from discord.ext import commands
+import os
+from dotenv import load_dotenv
+import time
+
+# Load environment variables
+load_dotenv()
+
+# Bot configuration
+TOKEN = os.getenv('DISCORD_BOT_TOKEN')
+GUILD_ID = os.getenv('GUILD_ID')  # Optional: for faster command sync during development
+
+# Bot setup with intents
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+
+class VALMBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix='!', intents=intents)
+        self.start_time = time.time()
+    
+    async def setup_hook(self):
+        """This is called when the bot starts up"""
+        # Sync commands globally (can take up to 1 hour)
+        # For faster testing, sync to a specific guild using guild=discord.Object(id=GUILD_ID)
+        if GUILD_ID:
+            guild = discord.Object(id=int(GUILD_ID))
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+            print(f"Commands synced to guild {GUILD_ID}")
+        else:
+            await self.tree.sync()
+            print("Commands synced globally")
+    
+    async def on_ready(self):
+        """Called when the bot is ready"""
+        print(f'{self.user} has connected to Discord!')
+        print(f'Bot is in {len(self.guilds)} guilds')
+        print('------')
+
+# Initialize bot
+bot = VALMBot()
+
+@bot.tree.command(name="ping", description="Check the bot's latency and uptime")
+async def ping(interaction: discord.Interaction):
+    """Shows bot latency and uptime information"""
+    # Calculate latency
+    api_latency = round(bot.latency * 1000, 2)
+    
+    # Calculate uptime
+    uptime_seconds = int(time.time() - bot.start_time)
+    uptime_hours = uptime_seconds // 3600
+    uptime_minutes = (uptime_seconds % 3600) // 60
+    uptime_secs = uptime_seconds % 60
+    
+    # Create embed
+    embed = discord.Embed(
+        title="🏓 Pong!",
+        description="Bot latency and status information",
+        color=discord.Color.green()
+    )
+    embed.add_field(name="API Latency", value=f"`{api_latency}ms`", inline=True)
+    embed.add_field(name="Uptime", value=f"`{uptime_hours}h {uptime_minutes}m {uptime_secs}s`", inline=True)
+    embed.set_footer(text=f"Requested by {interaction.user.name}")
+    
+    await interaction.response.send_message(embed=embed)
+
+# Error handler
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CommandOnCooldown):
+        await interaction.response.send_message(f"Command is on cooldown. Try again in {error.retry_after:.2f}s", ephemeral=True)
+    elif isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("You don't have permission to use this command!", ephemeral=True)
+    else:
+        print(f"Error: {error}")
+        await interaction.response.send_message("An error occurred while processing the command.", ephemeral=True)
+
+# Run the bot
+if __name__ == "__main__":
+    if not TOKEN:
+        print("Error: DISCORD_BOT_TOKEN not found in .env file!")
+    else:
+        bot.run(TOKEN)
