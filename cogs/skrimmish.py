@@ -36,10 +36,13 @@ class QueueButton(discord.ui.Button):
             )
             return
         
+        # Respond to interaction immediately (Discord requires response within 3 seconds)
+        await interaction.response.defer(ephemeral=True)
+        
         # Get updated queue
         queue = await db.get_queue()
         
-        # Update the queue display first
+        # Update the queue display
         await self.view.update_queue_display(interaction)
         
         # Check if we have 2 players (match ready)
@@ -58,10 +61,10 @@ class QueueButton(discord.ui.Button):
                 player1['username'], player2['username']
             )
             
-            # Update the queue display again
+            # Update the queue display again (now empty)
             await self.view.update_queue_display(interaction)
             
-            # Send match found notification
+            # Send match found notification as followup
             match_embed = discord.Embed(
                 title="🎯 Skrimmish Match Found!",
                 description=f"**Match ID:** #{match_id}\n\n"
@@ -72,14 +75,10 @@ class QueueButton(discord.ui.Button):
             )
             match_embed.set_footer(text="Use /report to report match results")
             
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 content=f"<@{player1['user_id']}> <@{player2['user_id']}>",
                 embed=match_embed
             )
-        else:
-            # Silently acknowledge the interaction
-            await interaction.response.defer()
-            await interaction.delete_original_response()
 
 class LeaveButton(discord.ui.Button):
     """Button for leaving the queue"""
@@ -105,10 +104,10 @@ class LeaveButton(discord.ui.Button):
         success = await db.remove_from_queue(interaction.user.id)
         
         if success:
+            # Respond to interaction immediately
+            await interaction.response.defer(ephemeral=True)
+            # Update the queue display
             await self.view.update_queue_display(interaction)
-            # Silently acknowledge the interaction
-            await interaction.response.defer()
-            await interaction.delete_original_response()
         else:
             await interaction.response.send_message(
                 "❌ Failed to leave queue. Please try again.",
