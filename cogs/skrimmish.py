@@ -64,21 +64,66 @@ class QueueButton(discord.ui.Button):
             # Update the queue display again (now empty)
             await self.view.update_queue_display(interaction)
             
-            # Send match found notification as followup
-            match_embed = discord.Embed(
-                title="🎯 Skrimmish Match Found!",
-                description=f"**Match ID:** #{match_id}\n\n"
-                           f"**Player 1:** <@{player1['user_id']}>\n"
-                           f"**Player 2:** <@{player2['user_id']}>\n\n"
-                           f"Good luck, have fun! 🔥",
-                color=discord.Color.gold()
-            )
-            match_embed.set_footer(text="Use /report to report match results")
+            # Get the next match number
+            match_number_str = await db.get_config('next_match_number')
+            match_number = int(match_number_str) if match_number_str else 1
             
-            await interaction.followup.send(
-                content=f"<@{player1['user_id']}> <@{player2['user_id']}>",
-                embed=match_embed
+            # Format as 4 digits: 0001, 0002, etc.
+            match_name = f"{match_number:04d}-skrimmage"
+            
+            # Get the guild and category
+            guild = interaction.guild
+            category_id = int(os.getenv('MATCH_CATEGORY_ID', 0))
+            category = guild.get_channel(category_id) if category_id else None
+            
+            # Get the player members
+            member1 = guild.get_member(player1['user_id'])
+            member2 = guild.get_member(player2['user_id'])
+            
+            # Set up permissions - only these 2 players can see the channels
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(read_messages=False, view_channel=False),
+                member1: discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True, connect=True, speak=True),
+                member2: discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True, connect=True, speak=True),
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True, view_channel=True)
+            }
+            
+            # Create private text channel
+            text_channel = await guild.create_text_channel(
+                name=match_name,
+                category=category,
+                overwrites=overwrites
             )
+            
+            # Create private voice channel
+            voice_channel = await guild.create_voice_channel(
+                name=match_name,
+                category=category,
+                overwrites=overwrites
+            )
+            
+            # Send welcome message in the private text channel
+            welcome_embed = discord.Embed(
+                title=f"🎯 Skrimmish Match #{match_number:04d}",
+                description=f"**Players:**\n{member1.mention} vs {member2.mention}\n\nGood luck, have fun! 🔥",
+                color=0xED4245
+            )
+            welcome_embed.add_field(
+                name="Voice Channel",
+                value=voice_channel.mention,
+                inline=False
+            )
+            welcome_embed.set_footer(text="Use /report to report match results")
+            
+            await text_channel.send(
+                content=f"{member1.mention} {member2.mention}",
+                embed=welcome_embed
+            )
+            
+            # Increment the match number for next time
+            await db.set_config('next_match_number', str(match_number + 1))
+            
+            print(f"✅ Created match channels: {match_name}")
 
 class LeaveButton(discord.ui.Button):
     """Button for leaving the queue"""

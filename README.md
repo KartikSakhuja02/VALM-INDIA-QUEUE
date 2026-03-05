@@ -31,6 +31,7 @@ A Discord bot for managing Valorant matchmaking queues for the Indian community.
    - Embed Links
    - Read Message History
    - Use Slash Commands
+   - Manage Channels (for creating match channels)
 9. Copy the generated URL and use it to invite the bot to your server
 
 ### 2. Local Development Setup (Laptop)
@@ -200,6 +201,17 @@ VALM-India-Queue/
 
 - `DISCORD_BOT_TOKEN` - Your Discord bot token (required)
 - `GUILD_ID` - Discord server ID for faster command sync during development (optional)
+- `DATABASE_URL` - PostgreSQL database connection string (required)
+- `QUEUE_CHANNEL_ID` - Channel ID where the queue UI will be posted on bot startup (required)
+- `MATCH_CATEGORY_ID` - Category ID where private match text/voice channels will be created (required)
+
+### Getting Channel/Category IDs
+
+1. Enable Developer Mode in Discord:
+   - User Settings → App Settings → Advanced → Enable "Developer Mode"
+2. Right-click on a channel and select "Copy Channel ID"
+3. Right-click on a category and select "Copy Category ID"
+4. Paste these IDs into your `.env` file
 
 ## Commands
 
