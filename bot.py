@@ -4,6 +4,8 @@ from discord.ext import commands
 import os
 from dotenv import load_dotenv
 import time
+import asyncio
+from database import db
 
 # Load environment variables
 load_dotenv()
@@ -24,22 +26,49 @@ class VALMBot(commands.Bot):
     
     async def setup_hook(self):
         """This is called when the bot starts up"""
+        # Connect to database
+        try:
+            await db.connect()
+            await db.initialize_schema()
+        except Exception as e:
+            print(f"❌ Database connection failed: {e}")
+            print("Make sure PostgreSQL is running and DATABASE_URL is correct in .env")
+            return
+        
+        # Load cogs
+        await self.load_cogs()
+        
         # Sync commands globally (can take up to 1 hour)
         # For faster testing, sync to a specific guild using guild=discord.Object(id=GUILD_ID)
         if GUILD_ID:
             guild = discord.Object(id=int(GUILD_ID))
             self.tree.copy_global_to(guild=guild)
             await self.tree.sync(guild=guild)
-            print(f"Commands synced to guild {GUILD_ID}")
+            print(f"✅ Commands synced to guild {GUILD_ID}")
         else:
             await self.tree.sync()
-            print("Commands synced globally")
+            print("✅ Commands synced globally")
+    
+    async def load_cogs(self):
+        """Load all cogs from the cogs directory"""
+        cogs = ['cogs.skrimmish']
+        for cog in cogs:
+            try:
+                await self.load_extension(cog)
+                print(f"✅ Loaded cog: {cog}")
+            except Exception as e:
+                print(f"❌ Failed to load cog {cog}: {e}")
     
     async def on_ready(self):
         """Called when the bot is ready"""
-        print(f'{self.user} has connected to Discord!')
-        print(f'Bot is in {len(self.guilds)} guilds')
+        print(f'🤖 {self.user} has connected to Discord!')
+        print(f'📊 Bot is in {len(self.guilds)} guilds')
         print('------')
+    
+    async def close(self):
+        """Cleanup when bot is shutting down"""
+        await db.disconnect()
+        await super().close()
 
 # Initialize bot
 bot = VALMBot()
