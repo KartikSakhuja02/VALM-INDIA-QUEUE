@@ -4,15 +4,15 @@ After=network.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/VALM-India-Queue
-ExecStart=/home/pi/VALM-India-Queue/venv/bin/python /home/pi/VALM-India-Queue/bot.py
+User=kartiksakhuja02
+WorkingDirectory=/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue
+ExecStart=/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/venv/bin/python /home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/bot.py
 Restart=always
 RestartSec=10
 
 # Logging
-StandardOutput=append:/home/pi/VALM-India-Queue/logs/bot.log
-StandardError=append:/home/pi/VALM-India-Queue/logs/bot.error.log
+StandardOutput=append:/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/logs/bot.log
+StandardError=append:/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/logs/bot.error.log
 
 [Install]
 WantedBy=multi-user.target
