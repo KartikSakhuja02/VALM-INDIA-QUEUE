@@ -69,7 +69,7 @@ class QueueButton(discord.ui.Button):
             match_number = int(match_number_str) if match_number_str else 1
             
             # Format as 4 digits: 0001, 0002, etc.
-            match_name = f"{match_number:04d}-skrimmage"
+            match_name = f"{match_number:04d}-scrimmish"
             
             # Get the guild and category
             guild = interaction.guild
