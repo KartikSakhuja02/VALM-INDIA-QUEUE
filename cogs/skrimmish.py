@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 from database import db
 import os
+import asyncio
 from typing import Optional
 
 class QueueButton(discord.ui.Button):
@@ -185,15 +186,21 @@ class SkrimmishCog(commands.Cog):
         self.bot = bot
         self.queue_view = QueueView()
         self.queue_channel_id = int(os.getenv('QUEUE_CHANNEL_ID', 0))
+        self.setup_done = False
     
-    async def cog_load(self):
-        """Called when the cog is loaded - setup queue UI automatically"""
-        if self.queue_channel_id:
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Called when the bot is ready - setup queue UI automatically"""
+        if not self.setup_done and self.queue_channel_id:
             await self.setup_queue_on_startup()
+            self.setup_done = True
     
     async def setup_queue_on_startup(self):
         """Setup the queue UI automatically on bot startup"""
         try:
+            # Wait a moment for bot to be fully ready
+            await asyncio.sleep(1)
+            
             # Get the channel
             channel = self.bot.get_channel(self.queue_channel_id)
             if not channel:
