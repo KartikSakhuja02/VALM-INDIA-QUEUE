@@ -812,6 +812,41 @@ class SkrimmishCog(commands.Cog):
         embed.set_footer(text=f"Total in queue: {len(queue)}")
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @app_commands.command(name="ign", description="Register your in-game name")
+    @app_commands.describe(player_ign="Your Valorant Mobile in-game name")
+    async def register_ign(self, interaction: discord.Interaction, player_ign: str):
+        """Register or update player's in-game name"""
+        user_id = interaction.user.id
+        discord_username = str(interaction.user)
+        
+        # Check if player is already registered
+        is_registered = await db.is_player_registered(user_id)
+        
+        # Register or update player
+        success, message = await db.register_player(user_id, discord_username, player_ign)
+        
+        if success:
+            if is_registered:
+                embed = discord.Embed(
+                    title="IGN Updated",
+                    description=f"Your in-game name has been updated to: **{player_ign}**",
+                    color=0xED4245
+                )
+            else:
+                embed = discord.Embed(
+                    title="Registration Complete",
+                    description=f"Welcome! Your in-game name has been registered as: **{player_ign}**\n\nYou can now participate in ranked matches and earn MMR!",
+                    color=0x00FF00
+                )
+                embed.add_field(name="Starting Stats", value="MMR: 0\nGames: 0\nWins: 0\nLosses: 0", inline=False)
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                f"❌ Registration failed: {message}",
+                ephemeral=True
+            )
 
 async def setup(bot):
     await bot.add_cog(SkrimmishCog(bot))

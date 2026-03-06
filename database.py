@@ -78,6 +78,25 @@ class Database:
                 )
             ''')
             
+            # Create player_profiles table
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS player_profiles (
+                    user_id BIGINT PRIMARY KEY,
+                    discord_username VARCHAR(255) NOT NULL,
+                    player_ign VARCHAR(255) NOT NULL,
+                    mmr INTEGER DEFAULT 0,
+                    wins INTEGER DEFAULT 0,
+                    losses INTEGER DEFAULT 0,
+                    games INTEGER DEFAULT 0,
+                    streak INTEGER DEFAULT 0,
+                    peak_mmr INTEGER DEFAULT 0,
+                    peak_streak INTEGER DEFAULT 0,
+                    winrate DECIMAL(5,2) DEFAULT 0.00,
+                    registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
             print("✅ Database schema initialized")
     
     # Bot Config Methods
@@ -172,6 +191,47 @@ class Database:
                 user_id
             )
             return stats
+    
+    # Player Profile Methods
+    async def register_player(self, user_id: int, discord_username: str, player_ign: str):
+        """Register a new player with their IGN"""
+        async with self.pool.acquire() as conn:
+            try:
+                await conn.execute(
+                    '''INSERT INTO player_profiles 
+                       (user_id, discord_username, player_ign, mmr, wins, losses, 
+                        games, streak, peak_mmr, peak_streak, winrate)
+                       VALUES ($1, $2, $3, 0, 0, 0, 0, 0, 0, 0, 0.00)''',
+                    user_id, discord_username, player_ign
+                )
+                return True, "Registration successful!"
+            except asyncpg.UniqueViolationError:
+                # Player already registered, update IGN
+                await conn.execute(
+                    '''UPDATE player_profiles 
+                       SET player_ign = $2, discord_username = $3, last_updated = CURRENT_TIMESTAMP
+                       WHERE user_id = $1''',
+                    user_id, player_ign, discord_username
+                )
+                return True, "IGN updated successfully!"
+    
+    async def get_player_profile(self, user_id: int):
+        """Get a player's profile"""
+        async with self.pool.acquire() as conn:
+            profile = await conn.fetchrow(
+                'SELECT * FROM player_profiles WHERE user_id = $1',
+                user_id
+            )
+            return profile
+    
+    async def is_player_registered(self, user_id: int):
+        """Check if a player is registered"""
+        async with self.pool.acquire() as conn:
+            result = await conn.fetchval(
+                'SELECT EXISTS(SELECT 1 FROM player_profiles WHERE user_id = $1)',
+                user_id
+            )
+            return result
 
 # Global database instance
 db = Database()

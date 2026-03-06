@@ -216,7 +216,20 @@ VALM-India-Queue/
 
 ## Commands
 
+### General Commands
 - `/ping` - Shows bot latency and uptime information
+- `/ign <player_ign>` - Register your in-game name (required to participate in ranked matches)
+
+### Queue Commands
+- `/queue_status` - Check current queue status
+- `/clear_queue` - Clear the entire queue (admin only)
+- `/setup_queue` - Setup the queue UI in the current channel (admin only)
+
+### How to Use
+1. **Register your IGN**: `/ign YourGameName`
+2. **Join the queue**: Click the "Join Queue" button in the queue channel
+3. **Wait for match**: When 2 players queue, a private match lobby is created
+4. **Play and vote**: After the match, vote for the winner
 
 ## Troubleshooting
 

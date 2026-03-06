@@ -46,6 +46,24 @@ CREATE TABLE IF NOT EXISTS user_stats (
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Player Profiles Table
+-- Stores registered player IGNs and comprehensive stats
+CREATE TABLE IF NOT EXISTS player_profiles (
+    user_id BIGINT PRIMARY KEY,
+    discord_username VARCHAR(255) NOT NULL,
+    player_ign VARCHAR(255) NOT NULL,
+    mmr INTEGER DEFAULT 0,
+    wins INTEGER DEFAULT 0,
+    losses INTEGER DEFAULT 0,
+    games INTEGER DEFAULT 0,
+    streak INTEGER DEFAULT 0,
+    peak_mmr INTEGER DEFAULT 0,
+    peak_streak INTEGER DEFAULT 0,
+    winrate DECIMAL(5,2) DEFAULT 0.00,
+    registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_skrimmish_queue_user_id ON skrimmish_queue(user_id);
 CREATE INDEX IF NOT EXISTS idx_skrimmish_queue_joined_at ON skrimmish_queue(joined_at);
@@ -53,3 +71,5 @@ CREATE INDEX IF NOT EXISTS idx_skrimmish_matches_player1 ON skrimmish_matches(pl
 CREATE INDEX IF NOT EXISTS idx_skrimmish_matches_player2 ON skrimmish_matches(player2_id);
 CREATE INDEX IF NOT EXISTS idx_skrimmish_matches_created_at ON skrimmish_matches(created_at);
 CREATE INDEX IF NOT EXISTS idx_user_stats_elo ON user_stats(elo_rating DESC);
+CREATE INDEX IF NOT EXISTS idx_player_profiles_mmr ON player_profiles(mmr DESC);
+CREATE INDEX IF NOT EXISTS idx_player_profiles_ign ON player_profiles(player_ign);
