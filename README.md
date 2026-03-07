@@ -205,7 +205,7 @@ VALM-India-Queue/
 - `QUEUE_CHANNEL_ID` - Channel ID where the queue UI will be posted on bot startup (required)
 - `MATCH_CATEGORY_ID` - Category ID where private match text/voice channels will be created (required)
 - `LOGS_CHANNEL_ID` - Channel ID where match results will be logged (required)
-- `VERIFICATION_ROLE_ID` - Role ID to assign when users verify for scrimmish (required for verification)
+- `VERIFICATION_ROLE_ID` - Role ID to assign when users verify for skrimmish (required for verification)
 - `VERIFICATION_CHANNEL_ID` - Channel ID where verification UI should be posted (required for verification)
 
 ### Getting Channel/Category IDs
@@ -224,7 +224,7 @@ VALM-India-Queue/
 - `/ign <player_ign>` - Register your in-game name (required to participate in ranked matches)
 Verification Commands (Admin Only)
 - `/setup_verification` - Setup the verification UI in the current channel
-  - Players click the ✅ button to get verified for scrimmish
+  - Players click the ✅ button to get verified for skrimmish
   - Button remains functional even after bot restart
 
 ### 

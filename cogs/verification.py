@@ -8,7 +8,7 @@ class VerificationButton(discord.ui.Button):
     def __init__(self):
         super().__init__(
             style=discord.ButtonStyle.success,
-            label="Get Verified",
+            label="Verify & Get Access",
             emoji="✅",
             custom_id="verification_button"  # Persistent ID
         )
@@ -29,7 +29,7 @@ class VerificationButton(discord.ui.Button):
         # Check if user already has the role
         if role in interaction.user.roles:
             await interaction.response.send_message(
-                "✅ You already have the verification role!",
+                "✅ **Already Verified!**\nYou already have access to skrimmish matches.",
                 ephemeral=True
             )
             return
@@ -37,10 +37,20 @@ class VerificationButton(discord.ui.Button):
         # Assign the role
         try:
             await interaction.user.add_roles(role)
-            await interaction.response.send_message(
-                f"✅ Successfully verified! You now have the {role.mention} role.",
-                ephemeral=True
+            embed = discord.Embed(
+                title="✅ Verification Successful",
+                description=(
+                    f"Welcome to **VALM India Queue**!\n\n"
+                    f"You now have the {role.mention} role and can participate in skrimmish matches.\n\n"
+                    f"**Next Steps:**\n"
+                    f"• Register your IGN with `/ign <your_name>`\n"
+                    f"• Head to the queue channel and click **Join Queue**\n"
+                    f"• Good luck and have fun! 🎮"
+                ),
+                color=0x2ECC71  # Professional green
             )
+            embed.set_footer(text="Your stats and progress will be tracked!")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
         except discord.Forbidden:
             await interaction.response.send_message(
                 "❌ I don't have permission to assign roles. Please contact an admin.",
@@ -59,7 +69,7 @@ class VerificationView(discord.ui.View):
         self.add_item(VerificationButton())
 
 class VerificationCog(commands.Cog):
-    """Cog for handling scrimmish verification"""
+    """Cog for handling skrimmish verification"""
     def __init__(self, bot):
         self.bot = bot
     
@@ -85,15 +95,28 @@ class VerificationCog(commands.Cog):
             )
             return
         
-        role = interaction.guild.get_role(int(role_id))
-        if not role:
-            await interaction.response.send_message(
-                "❌ Verification role not found. Please check the VERIFICATION_ROLE_ID in .env.",
-                ephemeral=True
-            )
-            return
+        role = inter� VALM India Queue - Verification",
+            description=(
+                "**Welcome to Valorant Mobile India's Premier Matchmaking System!**\n\n"
+                "Get verified to unlock access to competitive skrimmish matches, "
+                "track your progress, and climb the leaderboards.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "**What You'll Get:**\n"
+                f"✅ {role.mention} role\n"
+                "✅ Access to ranked skrimmish matches\n"
+                "✅ Personal stats tracking (Wins, Losses, MMR)\n"
+                "✅ Leaderboard ranking\n"
+                "✅ Match history & progression\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "**Ready to compete?** Click the button below to get started!"
+            ),
+            color=0x5865F2  # Discord Blurple - Professional color
+        )
+        embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
+        embed.set_footer(
+            text="VALM India • Competitive Skrimmish Matchmaking",
+            icon_url=interaction.guild.icon.url if interaction.guild.icon else None
         
-        # Create embed
         embed = discord.Embed(
             title="🎮 Scrimmish Verification",
             description=(
