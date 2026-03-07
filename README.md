@@ -233,6 +233,9 @@ VALM-India-Queue/
 - `/mmr add <player> <value>` - Add MMR to a player
 - `/mmr subtract <player> <value>` - Subtract MMR from a player
 
+### Player Management (Admin Only)
+- `/player sub <player_out> <player_in>` - Substitute a player in an active match
+
 ### How to Use
 1. **Register your IGN**: `/ign YourGameName`
 2. **Join the queue**: Click the "Join Queue" button in the queue channel

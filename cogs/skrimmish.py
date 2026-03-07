@@ -1307,6 +1307,95 @@ class SkrimmishCog(commands.Cog):
         embed.add_field(name="New MMR", value=f"{new_mmr}", inline=True)
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    # Player command group
+    player_group = app_commands.Group(name="player", description="Player management commands (admin only)")
+    
+    @player_group.command(name="sub", description="Substitute a player in an active match")
+    @app_commands.describe(
+        player_out="The player to substitute out",
+        player_in="The player to substitute in"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def player_sub(self, interaction: discord.Interaction, player_out: discord.Member, player_in: discord.Member):
+        """Substitute a player in an active match"""
+        # Check if this is a match channel
+        match_data = active_matches.get(interaction.channel_id)
+        
+        if not match_data:
+            await interaction.response.send_message(
+                "❌ This command can only be used in an active match channel!",
+                ephemeral=True
+            )
+            return
+        
+        # Check if player_out is actually in this match
+        player1 = match_data['player1']
+        player2 = match_data['player2']
+        
+        if player_out.id not in [player1.id, player2.id]:
+            await interaction.response.send_message(
+                f"❌ {player_out.mention} is not in this match!",
+                ephemeral=True
+            )
+            return
+        
+        # Check if player_in is already in the match
+        if player_in.id in [player1.id, player2.id]:
+            await interaction.response.send_message(
+                f"❌ {player_in.mention} is already in this match!",
+                ephemeral=True
+            )
+            return
+        
+        # Get channels
+        text_channel = match_data['text_channel']
+        voice_channel = match_data['voice_channel']
+        guild = interaction.guild
+        
+        # Update channel permissions
+        # Remove permissions from player_out
+        await text_channel.set_permissions(player_out, overwrite=None)
+        await voice_channel.set_permissions(player_out, overwrite=None)
+        
+        # Add permissions for player_in
+        overwrites = discord.PermissionOverwrite(
+            read_messages=True,
+            send_messages=True,
+            view_channel=True,
+            connect=True,
+            speak=True
+        )
+        await text_channel.set_permissions(player_in, overwrite=overwrites)
+        await voice_channel.set_permissions(player_in, overwrite=overwrites)
+        
+        # Update match_data
+        if player_out.id == player1.id:
+            match_data['player1'] = player_in
+            old_team = match_data['team1_name']
+            match_data['team1_name'] = str(player_in.display_name)
+        else:
+            match_data['player2'] = player_in
+            old_team = match_data['team2_name']
+            match_data['team2_name'] = str(player_in.display_name)
+        
+        # Update votes dictionary keys (rename the team)
+        if old_team in match_data['votes']:
+            new_team = str(player_in.display_name)
+            match_data['votes'][new_team] = match_data['votes'].pop(old_team)
+        
+        # Send substitution notification
+        embed = discord.Embed(
+            title="🔄 Player Substitution",
+            description=f"{player_out.mention} has been subbed out\n{player_in.mention} has been subbed in",
+            color=0xED4245
+        )
+        embed.set_footer(text=f"Substitution by {interaction.user.display_name}")
+        
+        await interaction.response.send_message(
+            content=f"{player_out.mention} {player_in.mention}",
+            embed=embed
+        )
 
 async def setup(bot):
     await bot.add_cog(SkrimmishCog(bot))
