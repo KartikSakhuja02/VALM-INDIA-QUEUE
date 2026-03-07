@@ -7,12 +7,333 @@ import asyncio
 import random
 from typing import Optional
 from datetime import datetime
+import google.generativeai as genai
+import io
+import re
 
 # Dictionary to track active matches
 active_matches = {}
 
 # Lock to prevent race condition with autoping
 autoping_lock = asyncio.Lock()
+
+# Configure Gemini API
+genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+
+class ReadyButton(discord.ui.Button):
+    """Button for players to confirm they're ready"""
+    def __init__(self):
+        super().__init__(
+            style=discord.ButtonStyle.success,
+            label="I'm Ready!",
+            emoji="✅"
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        match_data = active_matches.get(self.view.match_id)
+        if not match_data:
+            await interaction.response.send_message("❌ Match data not found.", ephemeral=True)
+            return
+        
+        player1_id = match_data['player1'].id
+        player2_id = match_data['player2'].id
+        
+        # Check if user is one of the players
+        if interaction.user.id not in [player1_id, player2_id]:
+            await interaction.response.send_message("❌ Only players in this match can ready up!", ephemeral=True)
+            return
+        
+        # Check if already ready
+        if interaction.user.id in match_data['ready_players']:
+            await interaction.response.send_message("✅ You're already ready!", ephemeral=True)
+            return
+        
+        # Mark as ready
+        match_data['ready_players'].add(interaction.user.id)
+        
+        # Update display
+        await self.view.update_ready_display(interaction)
+
+class ReadyView(discord.ui.View):
+    """View for ready check"""
+    def __init__(self, match_id: int, bot):
+        super().__init__(timeout=None)
+        self.match_id = match_id
+        self.bot = bot
+        self.message: Optional[discord.Message] = None
+        self.add_item(ReadyButton())
+    
+    async def update_ready_display(self, interaction: discord.Interaction):
+        """Update the ready embed"""
+        match_data = active_matches.get(self.match_id)
+        if not match_data:
+            return
+        
+        ready_count = len(match_data['ready_players'])
+        player1 = match_data['player1']
+        player2 = match_data['player2']
+        
+        p1_ready = "✅" if player1.id in match_data['ready_players'] else "⏳"
+        p2_ready = "✅" if player2.id in match_data['ready_players'] else "⏳"
+        
+        embed = discord.Embed(
+            title="🎮 Ready Check",
+            description=f"Both players must confirm they're ready to proceed.\n\n{p1_ready} {player1.mention}\n{p2_ready} {player2.mention}",
+            color=0x5865F2
+        )
+        embed.add_field(
+            name="Status",
+            value=f"{ready_count}/2 players ready",
+            inline=False
+        )
+        
+        if self.message:
+            await self.message.edit(embed=embed, view=self)
+        
+        # If both ready, proceed
+        if ready_count >= 2:
+            await interaction.response.defer()
+            # Disable button
+            for item in self.children:
+                item.disabled = True
+            
+            await self.message.edit(embed=embed, view=self)
+            await self.start_match(match_data)
+    
+    async def start_match(self, match_data):
+        """Start the match after both players are ready"""
+        text_channel = match_data['text_channel']
+        player1 = match_data['player1']
+        player2 = match_data['player2']
+        
+        # Send start message
+        start_embed = discord.Embed(
+            title="🎮 Match Starting",
+            description=(
+                f"**{player1.mention} vs {player2.mention}**\n\n"
+                f"• Any one of you can host a 1v1 custom match\n"
+                f"• Play your match and take a screenshot of the final scoreboard\n"
+                f"• After the match, click the **Submit Screenshot** button below to upload the result\n\n"
+                f"**Good luck, have fun!** 🔥"
+            ),
+            color=0x00FF00
+        )
+        await text_channel.send(embed=start_embed)
+        
+        # Send submit screenshot UI
+        await asyncio.sleep(2)
+        submit_embed = discord.Embed(
+            title="📸 Submit Match Result",
+            description="Once your match is complete, upload the final scoreboard screenshot using the button below.",
+            color=0xED4245
+        )
+        
+        submit_view = SubmitSSView(self.match_id, self.bot)
+        submit_message = await text_channel.send(embed=submit_embed, view=submit_view)
+        submit_view.message = submit_message
+
+class SubmitSSButton(discord.ui.Button):
+    """Button to submit screenshot"""
+    def __init__(self):
+        super().__init__(
+            style=discord.ButtonStyle.primary,
+            label="Submit Screenshot",
+            emoji="📸"
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        match_data = active_matches.get(self.view.match_id)
+        if not match_data:
+            await interaction.response.send_message("❌ Match data not found.", ephemeral=True)
+            return
+        
+        player1_id = match_data['player1'].id
+        player2_id = match_data['player2'].id
+        
+        # Check if user is one of the players
+        if interaction.user.id not in [player1_id, player2_id]:
+            await interaction.response.send_message("❌ Only players in this match can submit screenshots!", ephemeral=True)
+            return
+        
+        # Check if already processing
+        if match_data.get('processing_ss', False):
+            await interaction.response.send_message("⏳ Already processing a screenshot. Please wait...", ephemeral=True)
+            return
+        
+        match_data['processing_ss'] = True
+        
+        await interaction.response.send_message(
+            "📸 **Please upload your screenshot now!**\n\nYou have **3 minutes** to upload the final scoreboard screenshot.\n\nJust send the image in this channel.",
+            ephemeral=True
+        )
+        
+        # Wait for image upload
+        def check(m):
+            return (
+                m.channel.id == interaction.channel_id and
+                m.author.id == interaction.user.id and
+                len(m.attachments) > 0 and
+                m.attachments[0].content_type and
+                m.attachments[0].content_type.startswith('image/')
+            )
+        
+        try:
+            msg = await self.view.bot.wait_for('message', check=check, timeout=180)  # 3 minutes
+            
+            # Process the screenshot
+            attachment = msg.attachments[0]
+            await self.view.process_screenshot(attachment, interaction.channel)
+            
+        except asyncio.TimeoutError:
+            match_data['processing_ss'] = False
+            await interaction.followup.send(
+                "⏰ **Timeout!** You didn't upload a screenshot in 3 minutes.\n\nPlease click the **Submit Screenshot** button again to try.",
+                ephemeral=True
+            )
+
+class SubmitSSView(discord.ui.View):
+    """View for submitting screenshot"""
+    def __init__(self, match_id: int, bot):
+        super().__init__(timeout=None)
+        self.match_id = match_id
+        self.bot = bot
+        self.message: Optional[discord.Message] = None
+        self.add_item(SubmitSSButton())
+    
+    async def process_screenshot(self, attachment, channel):
+        """Process the uploaded screenshot using Gemini OCR"""
+        match_data = active_matches.get(self.match_id)
+        if not match_data:
+            return
+        
+        try:
+            # Download image
+            image_data = await attachment.read()
+            
+            # Send processing message
+            processing_embed = discord.Embed(
+                title="⏳ Processing Screenshot...",
+                description="Analyzing the match results using AI...",
+                color=0xFFA500
+            )
+            processing_msg = await channel.send(embed=processing_embed)
+            
+            # Use Gemini for OCR
+            model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            
+            # Upload image to Gemini
+            image_parts = [{
+                "mime_type": attachment.content_type,
+                "data": image_data
+            }]
+            
+            prompt = """Analyze this Valorant Mobile match scoreboard screenshot and extract the following information:
+
+1. Find the two player IGN/usernames
+2. Find their scores (the large numbers next to each player)
+3. Identify which player has the yellow/gold background (this player corresponds to the GREEN/higher score)
+4. Identify which player has the red background (this player corresponds to the RED/lower score)
+
+Return ONLY in this exact format:
+YELLOW_PLAYER: [player name with yellow background]
+RED_PLAYER: [player name with red background]
+YELLOW_SCORE: [score number for yellow player]
+RED_SCORE: [score number for red player]
+
+Example:
+YELLOW_PLAYER: aimboss
+RED_PLAYER: MatarPaneer
+YELLOW_SCORE: 10
+RED_SCORE: 8"""
+            
+            response = model.generate_content([prompt, image_parts[0]])
+            result_text = response.text
+            
+            # Parse the response
+            yellow_player_match = re.search(r'YELLOW_PLAYER:\s*(.+)', result_text, re.IGNORECASE)
+            red_player_match = re.search(r'RED_PLAYER:\s*(.+)', result_text, re.IGNORECASE)
+            yellow_score_match = re.search(r'YELLOW_SCORE:\s*(\d+)', result_text, re.IGNORECASE)
+            red_score_match = re.search(r'RED_SCORE:\s*(\d+)', result_text, re.IGNORECASE)
+            
+            if not all([yellow_player_match, red_player_match, yellow_score_match, red_score_match]):
+                raise ValueError("Could not extract match data from screenshot")
+            
+            yellow_player = yellow_player_match.group(1).strip()
+            red_player = red_player_match.group(1).strip()
+            yellow_score = int(yellow_score_match.group(1))
+            red_score = int(red_score_match.group(1))
+            
+            # Determine winner (yellow background = green/higher score)
+            winner_ign = yellow_player if yellow_score > red_score else red_player
+            loser_ign = red_player if yellow_score > red_score else yellow_player
+            winner_score = max(yellow_score, red_score)
+            loser_score = min(yellow_score, red_score)
+            
+            # Get player profiles to match Discord users
+            player1 = match_data['player1']
+            player2 = match_data['player2']
+            
+            p1_profile = await db.get_player_profile(player1.id)
+            p2_profile = await db.get_player_profile(player2.id)
+            
+            # Match IGNs to Discord users
+            winner_user = None
+            loser_user = None
+            
+            if p1_profile and p1_profile['player_ign'].lower() == winner_ign.lower():
+                winner_user = player1
+                loser_user = player2
+            elif p2_profile and p2_profile['player_ign'].lower() == winner_ign.lower():
+                winner_user = player2
+                loser_user = player1
+            elif p1_profile and p1_profile['player_ign'].lower() == loser_ign.lower():
+                loser_user = player1
+                winner_user = player2
+            elif p2_profile and p2_profile['player_ign'].lower() == loser_ign.lower():
+                loser_user = player2
+                winner_user = player1
+            else:
+                raise ValueError("Could not match IGNs to registered players")
+            
+            # Delete processing message
+            await processing_msg.delete()
+            
+            # Send result
+            result_embed = discord.Embed(
+                title=f"🏆 Match #{match_data['match_number']:04d} Complete",
+                description=f"**Winner:** {winner_user.mention} ({winner_ign}) - {winner_score}\n**Runner-up:** {loser_user.mention} ({loser_ign}) - {loser_score}",
+                color=0x00FF00
+            )
+            result_embed.set_image(url=attachment.url)
+            await channel.send(embed=result_embed)
+            
+            # Disable submit button
+            for item in self.children:
+                item.disabled = True
+            if self.message:
+                await self.message.edit(view=self)
+            
+            # TODO: Update MMR, wins, losses, stats here
+            
+            # Clean up match channels after 30 seconds
+            await asyncio.sleep(30)
+            try:
+                await channel.delete()
+                await match_data['voice_channel'].delete()
+            except:
+                pass
+            
+            if self.match_id in active_matches:
+                del active_matches[self.match_id]
+            
+        except Exception as e:
+            match_data['processing_ss'] = False
+            error_embed = discord.Embed(
+                title="❌ Error Processing Screenshot",
+                description=f"Could not process the screenshot. Please make sure it's a clear image of the final scoreboard.\n\nError: {str(e)}",
+                color=0xFF0000
+            )
+            await channel.send(embed=error_embed)
 
 class CancelButton(discord.ui.Button):
     """Button for voting on match cancellation"""
@@ -717,93 +1038,24 @@ class QueueView(discord.ui.View):
         member1 = match_data['player1']
         member2 = match_data['player2']
         
-        # Randomly choose host
-        host = random.choice([member1, member2])
-        guest = member2 if host == member1 else member1
+        # Initialize ready players set
+        match_data['ready_players'] = set()
         
-        # Ask host to send RCP
-        host_embed = discord.Embed(
-            title="Match Ready",
-            description=f"{host.mention} has been selected as the host.\n\nPlease create a custom 1v1 match and send the room code in this chat.",
-            color=0xED4245
+        # Send ready check
+        ready_embed = discord.Embed(
+            title="🎮 Ready Check",
+            description=f"Both players must confirm they're ready to proceed.\n\n⏳ {member1.mention}\n⏳ {member2.mention}",
+            color=0x5865F2
         )
-        await text_channel.send(embed=host_embed)
+        ready_embed.add_field(
+            name="Status",
+            value="0/2 players ready",
+            inline=False
+        )
         
-        # Wait for host's message with room code
-        def check(m):
-            return m.author.id == host.id and m.channel.id == text_channel.id
-        
-        try:
-            room_code_msg = await self.bot.wait_for('message', check=check, timeout=300)  # 5 min timeout
-            
-            # Ping the room code to the guest
-            guest_embed = discord.Embed(
-                title="Room Code Received",
-                description=f"{guest.mention} Please join the match with the following room code:\n\n**{room_code_msg.content}**",
-                color=0xED4245
-            )
-            await text_channel.send(embed=guest_embed)
-            
-            # Send good luck message
-            glhf_embed = discord.Embed(
-                title="Match In Progress",
-                description=f"{member1.mention} vs {member2.mention}\n\nGood luck, have fun!",
-                color=0xED4245
-            )
-            await text_channel.send(embed=glhf_embed)
-            
-            # Wait a bit for match to complete, then send voting UI
-            await asyncio.sleep(5)
-            
-            # Create and send voting UI
-            team1_name = match_data['team1_name']
-            team2_name = match_data['team2_name']
-            match_number = match_data['match_number']
-            
-            vote_embed = discord.Embed(
-                title=f"Winner For Queue#{match_number:04d}",
-                color=0xED4245
-            )
-            vote_embed.add_field(
-                name=team1_name,
-                value="Votes: 0",
-                inline=True
-            )
-            vote_embed.add_field(
-                name=team2_name,
-                value="Votes: 0",
-                inline=True
-            )
-            vote_embed.add_field(
-                name="\u200b",
-                value="2 more votes required!",
-                inline=False
-            )
-            
-            vote_view = VoteView(text_channel.id, team1_name, team2_name, self.bot)
-            vote_message = await text_channel.send(embed=vote_embed, view=vote_view)
-            vote_view.message = vote_message
-            
-        except asyncio.TimeoutError:
-            # Host didn't send room code in time
-            timeout_embed = discord.Embed(
-                title="Match Cancelled",
-                description=f"{host.mention} did not provide the room code in time. Channels will be deleted in 10 seconds.",
-                color=0xFF0000
-            )
-            await text_channel.send(embed=timeout_embed)
-            await asyncio.sleep(10)
-            
-            # Delete channels
-            try:
-                await text_channel.delete()
-                await match_data['voice_channel'].delete()
-            except:
-                pass
-            
-            # Remove from active matches
-            if text_channel_id in active_matches:
-                del active_matches[text_channel_id]
+        ready_view = ReadyView(text_channel_id, self.bot)
+        ready_message = await text_channel.send(embed=ready_embed, view=ready_view)
+        ready_view.message = ready_message
 
 class SkrimmishCog(commands.Cog):
     """Cog for managing 1v1 skrimmish matches"""
