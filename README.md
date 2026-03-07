@@ -222,6 +222,7 @@ VALM-India-Queue/
 
 ### Queue Commands
 - `/queue_status` - Check current queue status
+- `/cancel` - Vote to cancel the current match (use in match channel, requires both players to vote)
 - `/clear_queue` - Clear the entire queue (admin only)
 - `/setup_queue` - Setup the queue UI in the current channel (admin only)
 

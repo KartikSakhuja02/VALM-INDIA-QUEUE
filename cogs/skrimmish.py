@@ -11,6 +11,153 @@ from datetime import datetime
 # Dictionary to track active matches
 active_matches = {}
 
+class CancelButton(discord.ui.Button):
+    """Button for voting on match cancellation"""
+    def __init__(self, vote_type: str):
+        # vote_type is "yes" or "no"
+        style = discord.ButtonStyle.red if vote_type == "yes" else discord.ButtonStyle.gray
+        super().__init__(
+            style=style,
+            label=f"Vote {vote_type.upper()}",
+            custom_id=f"cancel_{vote_type}"
+        )
+        self.vote_type = vote_type
+    
+    async def callback(self, interaction: discord.Interaction):
+        cancel_data = self.view.cancel_data
+        user_id = interaction.user.id
+        
+        # Check if user is one of the players
+        player1_id = cancel_data['player1'].id
+        player2_id = cancel_data['player2'].id
+        
+        if user_id not in [player1_id, player2_id]:
+            await interaction.response.send_message("❌ Only players in this match can vote!", ephemeral=True)
+            return
+        
+        # Check if user already voted
+        if user_id in cancel_data['voters']:
+            await interaction.response.send_message("❌ You have already voted!", ephemeral=True)
+            return
+        
+        # Record the vote
+        cancel_data['voters'].add(user_id)
+        if self.vote_type == "yes":
+            cancel_data['yes_votes'] += 1
+        else:
+            cancel_data['no_votes'] += 1
+        
+        # Update the display
+        await self.view.update_display(interaction)
+        
+        # Check if both players voted - finalize immediately
+        if len(cancel_data['voters']) == 2:
+            await self.view.finalize_decision(early=True)
+
+class CancelView(discord.ui.View):
+    """View for match cancellation voting"""
+    def __init__(self, bot, cancel_data: dict):
+        super().__init__(timeout=60)  # 1 minute timeout
+        self.bot = bot
+        self.cancel_data = cancel_data
+        self.message: Optional[discord.Message] = None
+        self.finalized = False
+        
+        # Add yes and no buttons
+        self.add_item(CancelButton("yes"))
+        self.add_item(CancelButton("no"))
+    
+    async def update_display(self, interaction: discord.Interaction):
+        """Update the vote counts in the embed"""
+        yes_votes = self.cancel_data['yes_votes']
+        no_votes = self.cancel_data['no_votes']
+        
+        embed = discord.Embed(
+            title="⚠️ Match Cancellation Vote",
+            description=f"Vote whether to cancel this match\n\n**Yes Votes:** {yes_votes}\n**No Votes:** {no_votes}\n\nWaiting for votes...",
+            color=0xFF0000
+        )
+        embed.set_footer(text="Vote ends in 60 seconds or when both players vote")
+        
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    async def finalize_decision(self, early: bool = False):
+        """Finalize the cancellation vote and take action"""
+        if self.finalized:
+            return
+        
+        self.finalized = True
+        
+        # Disable all buttons
+        for item in self.children:
+            item.disabled = True
+        
+        yes_votes = self.cancel_data['yes_votes']
+        no_votes = self.cancel_data['no_votes']
+        total_votes = len(self.cancel_data['voters'])
+        
+        # Determine the outcome
+        if total_votes == 0:
+            # No one voted
+            result = "continue"
+            reason = "No one voted"
+        elif yes_votes > no_votes:
+            result = "cancel"
+            reason = f"Majority voted YES ({yes_votes}-{no_votes})"
+        else:
+            result = "continue"
+            reason = f"Vote was NO or tied ({yes_votes}-{no_votes})"
+        
+        # Create result embed
+        if result == "cancel":
+            embed = discord.Embed(
+                title="❌ Match Cancelled",
+                description=f"{reason}\n\nThis match has been cancelled. Channels will be deleted in 30 seconds.",
+                color=0xFF0000
+            )
+        else:
+            embed = discord.Embed(
+                title="✅ Match Continues",
+                description=f"{reason}\n\nThe match will continue.",
+                color=0x00FF00
+            )
+        
+        if self.message:
+            await self.message.edit(embed=embed, view=self)
+        
+        # Handle the outcome
+        if result == "cancel":
+            text_channel_id = self.cancel_data['text_channel_id']
+            voice_channel_id = self.cancel_data['voice_channel_id']
+            
+            await asyncio.sleep(30)
+            
+            # Delete channels
+            guild = self.bot.get_guild(int(os.getenv('GUILD_ID')))
+            text_channel = guild.get_channel(text_channel_id)
+            voice_channel = guild.get_channel(voice_channel_id)
+            
+            if text_channel:
+                try:
+                    await text_channel.delete()
+                except:
+                    pass
+            if voice_channel:
+                try:
+                    await voice_channel.delete()
+                except:
+                    pass
+            
+            # Remove from active matches
+            if text_channel_id in active_matches:
+                del active_matches[text_channel_id]
+        
+        self.stop()
+    
+    async def on_timeout(self):
+        """Called when the 60 second timeout occurs"""
+        await self.finalize_decision(early=False)
+
 class VoteButton(discord.ui.Button):
     """Button for voting on match winner"""
     def __init__(self, team_name: str, match_id: str, style: discord.ButtonStyle):
@@ -847,6 +994,57 @@ class SkrimmishCog(commands.Cog):
                 f"❌ Registration failed: {message}",
                 ephemeral=True
             )
+    
+    @app_commands.command(name="cancel", description="Vote to cancel the current match")
+    async def cancel_match(self, interaction: discord.Interaction):
+        """Initiate a vote to cancel the current match"""
+        user_id = interaction.user.id
+        
+        # Find which match the user is in
+        match_found = None
+        text_channel_id = None
+        
+        for channel_id, match_data in active_matches.items():
+            if user_id in [match_data['player1'].id, match_data['player2'].id]:
+                match_found = match_data
+                text_channel_id = channel_id
+                break
+        
+        if not match_found:
+            await interaction.response.send_message("❌ You are not in an active match!", ephemeral=True)
+            return
+        
+        # Check if they're in the match channel
+        if interaction.channel_id != text_channel_id:
+            await interaction.response.send_message("❌ You can only use this command in your match channel!", ephemeral=True)
+            return
+        
+        # Create cancel vote data
+        cancel_data = {
+            'player1': match_found['player1'],
+            'player2': match_found['player2'],
+            'yes_votes': 0,
+            'no_votes': 0,
+            'voters': set(),
+            'text_channel_id': text_channel_id,
+            'voice_channel_id': match_found['voice_channel'].id
+        }
+        
+        # Create and send the vote UI
+        view = CancelView(self.bot, cancel_data)
+        
+        embed = discord.Embed(
+            title="⚠️ Match Cancellation Vote",
+            description=f"{interaction.user.mention} wants to cancel this match!\n\n**Yes Votes:** 0\n**No Votes:** 0\n\nBoth players can vote. You have 60 seconds.",
+            color=0xFF0000
+        )
+        embed.set_footer(text="Vote ends in 60 seconds or when both players vote")
+        
+        await interaction.response.send_message(embed=embed, view=view)
+        
+        # Store message reference for updates
+        message = await interaction.original_response()
+        view.message = message
 
 async def setup(bot):
     await bot.add_cog(SkrimmishCog(bot))

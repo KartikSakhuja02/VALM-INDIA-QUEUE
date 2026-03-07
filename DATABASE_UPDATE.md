@@ -6,10 +6,12 @@ This guide will help you update your PostgreSQL database on the Raspberry Pi to 
 
 ### Option 1: Using psql (Recommended)
 
-1. **Connect to PostgreSQL**:
+1. **Connect to PostgreSQL with valmbot user**:
    ```bash
-   sudo -u postgres psql valmindiaqueue
+   psql -U valmbot -d valmindiaqueue -h localhost
    ```
+   
+   When prompted, enter the password: `valorantmobileindia`
 
 2. **Create the player_profiles table**:
    ```sql
@@ -55,7 +57,7 @@ This guide will help you update your PostgreSQL database on the Raspberry Pi to 
 
 2. **Run the updated schema**:
    ```bash
-   sudo -u postgres psql valmindiaqueue < schema.sql
+   PGPASSWORD=valorantmobileindia psql -U valmbot -d valmindiaqueue -h localhost < schema.sql
    ```
 
    This will create any missing tables without affecting existing data.
@@ -90,8 +92,9 @@ The bot will automatically create the `player_profiles` table when it starts up,
 
 3. **Verify registration in database** (optional):
    ```bash
-   sudo -u postgres psql valmindiaqueue
+   psql -U valmbot -d valmindiaqueue -h localhost
    ```
+   Enter password: `valorantmobileindia`
    ```sql
    SELECT * FROM player_profiles;
    \q
@@ -120,7 +123,7 @@ The `player_profiles` table stores:
 This is fine - it means the table already exists. No action needed.
 
 ### Error: "permission denied"
-Make sure you're using `sudo -u postgres` when running psql commands.
+Make sure you're using the `valmbot` user with the correct password: `valorantmobileindia`
 
 ### Bot not starting
 1. Check logs: `sudo journalctl -u valmindiaqueue -n 50`
@@ -129,5 +132,5 @@ Make sure you're using `sudo -u postgres` when running psql commands.
 
 ### Can't connect to database
 1. Check PostgreSQL is running: `sudo systemctl status postgresql`
-2. Verify database exists: `sudo -u postgres psql -l | grep valmindiaqueue`
-3. Test connection: `sudo -u postgres psql valmindiaqueue`
+2. Verify database exists: `psql -U valmbot -h localhost -l | grep valmindiaqueue`
+3. Test connection: `psql -U valmbot -d valmindiaqueue -h localhost` (password: `valorantmobileindia`)
