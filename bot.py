@@ -73,30 +73,6 @@ class VALMBot(commands.Bot):
 # Initialize bot
 bot = VALMBot()
 
-@bot.tree.command(name="ping", description="Check the bot's latency and uptime")
-async def ping(interaction: discord.Interaction):
-    """Shows bot latency and uptime information"""
-    # Calculate latency
-    api_latency = round(bot.latency * 1000, 2)
-    
-    # Calculate uptime
-    uptime_seconds = int(time.time() - bot.start_time)
-    uptime_hours = uptime_seconds // 3600
-    uptime_minutes = (uptime_seconds % 3600) // 60
-    uptime_secs = uptime_seconds % 60
-    
-    # Create embed
-    embed = discord.Embed(
-        title="🏓 Pong!",
-        description="Bot latency and status information",
-        color=discord.Color.green()
-    )
-    embed.add_field(name="API Latency", value=f"`{api_latency}ms`", inline=True)
-    embed.add_field(name="Uptime", value=f"`{uptime_hours}h {uptime_minutes}m {uptime_secs}s`", inline=True)
-    embed.set_footer(text=f"Requested by {interaction.user.name}")
-    
-    await interaction.response.send_message(embed=embed)
-
 # Error handler
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):

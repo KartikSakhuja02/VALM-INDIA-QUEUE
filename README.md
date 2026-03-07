@@ -217,7 +217,7 @@ VALM-India-Queue/
 ## Commands
 
 ### General Commands
-- `/ping` - Shows bot latency and uptime information
+- `/ping` - Shows bot latency and uptime (or pings players not in VC when used in a match channel)
 - `/ign <player_ign>` - Register your in-game name (required to participate in ranked matches)
 
 ### Queue Commands

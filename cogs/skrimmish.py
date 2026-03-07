@@ -1045,6 +1045,80 @@ class SkrimmishCog(commands.Cog):
         # Store message reference for updates
         message = await interaction.original_response()
         view.message = message
+    
+    @app_commands.command(name="ping", description="Check bot latency or ping players not in VC")
+    async def ping(self, interaction: discord.Interaction):
+        """Context-aware ping: shows bot latency or pings players not in VC"""
+        user_id = interaction.user.id
+        
+        # Check if this is a match channel
+        match_found = None
+        text_channel_id = None
+        
+        for channel_id, match_data in active_matches.items():
+            if channel_id == interaction.channel_id:
+                match_found = match_data
+                text_channel_id = channel_id
+                break
+        
+        # If in a match channel and user is a player
+        if match_found and user_id in [match_found['player1'].id, match_found['player2'].id]:
+            # Get the voice channel
+            guild = interaction.guild
+            voice_channel = guild.get_channel(match_found['voice_channel'].id)
+            
+            if not voice_channel:
+                await interaction.response.send_message("❌ Voice channel not found!", ephemeral=True)
+                return
+            
+            # Check who's in VC
+            members_in_vc = voice_channel.members
+            player1 = match_found['player1']
+            player2 = match_found['player2']
+            
+            # Find who's NOT in VC
+            not_in_vc = []
+            if player1 not in members_in_vc:
+                not_in_vc.append(player1)
+            if player2 not in members_in_vc:
+                not_in_vc.append(player2)
+            
+            if not not_in_vc:
+                # Everyone is in VC
+                await interaction.response.send_message("✅ All players are already in the voice channel!", ephemeral=True)
+            else:
+                # Ping players not in VC
+                mentions = " ".join([player.mention for player in not_in_vc])
+                embed = discord.Embed(
+                    title="🔔 Voice Channel Reminder",
+                    description=f"{mentions}\n\nPlease join {voice_channel.mention} to proceed with the match!",
+                    color=0xFF0000
+                )
+                embed.set_footer(text=f"Reminder sent by {interaction.user.display_name}")
+                
+                await interaction.response.send_message(embed=embed)
+        else:
+            # Not in a match channel - show bot latency
+            import time
+            api_latency = round(self.bot.latency * 1000, 2)
+            
+            # Calculate uptime
+            uptime_seconds = int(time.time() - self.bot.start_time)
+            uptime_hours = uptime_seconds // 3600
+            uptime_minutes = (uptime_seconds % 3600) // 60
+            uptime_secs = uptime_seconds % 60
+            
+            # Create embed
+            embed = discord.Embed(
+                title="🏓 Pong!",
+                description="Bot latency and status information",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="API Latency", value=f"`{api_latency}ms`", inline=True)
+            embed.add_field(name="Uptime", value=f"`{uptime_hours}h {uptime_minutes}m {uptime_secs}s`", inline=True)
+            embed.set_footer(text=f"Requested by {interaction.user.name}")
+            
+            await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(SkrimmishCog(bot))
