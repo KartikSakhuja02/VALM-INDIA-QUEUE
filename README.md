@@ -73,6 +73,9 @@ sudo apt update && sudo apt upgrade -y
 # Install Python and pip (if not already installed)
 sudo apt install python3 python3-pip python3-venv git -y
 
+# Install system dependencies for Pillow (required for image processing)
+sudo apt install libjpeg-dev zlib1g-dev libpng-dev -y
+
 # Navigate to home directory
 cd ~
 
@@ -86,12 +89,19 @@ python3 -m venv venv
 # Activate virtual environment
 source venv/bin/activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Upgrade pip first
+pip install --upgrade pip
+
+# Install dependencies one by one to avoid timeouts
+pip install discord.py>=2.3.0
+pip install python-dotenv>=1.0.0
+pip install asyncpg>=0.29.0
+pip install google-generativeai>=0.3.0
+pip install Pillow>=10.0.0
 
 # Configure environment variables
 cp .env.example .env
-nano .env  # Add your DISCORD_BOT_TOKEN
+nano .env  # Add your DISCORD_BOT_TOKEN and GEMINI_API_KEY
 
 # Create logs directory
 mkdir -p logs
@@ -170,9 +180,23 @@ cd ~/VALM-India-Queue
 # Pull the latest changes
 git pull origin main
 
-# If you updated dependencies, reinstall them
+# If you updated dependencies, install system packages first (if needed)
+# sudo apt install libjpeg-dev zlib1g-dev libpng-dev -y
+
+# Activate virtual environment and update dependencies
 source venv/bin/activate
-pip install -r requirements.txt
+pip install --upgrade pip
+
+# Install new dependencies (if any were added)
+# For better stability, you can install one by one:
+pip install discord.py>=2.3.0
+pip install python-dotenv>=1.0.0
+pip install asyncpg>=0.29.0
+pip install google-generativeai>=0.3.0
+pip install Pillow>=10.0.0
+
+# Or use requirements.txt (might timeout on slower connections)
+# pip install -r requirements.txt
 
 # Restart the bot service
 sudo systemctl restart valmindiaqueue
