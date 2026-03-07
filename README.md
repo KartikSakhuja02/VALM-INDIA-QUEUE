@@ -296,6 +296,57 @@ Get verified**: Click the ✅ "Get Verified" button in the verification channel
 2. Verify your Discord bot token is correct
 3. Check internet connection on Raspberry Pi
 
+### Installation crashes or SSH disconnects during dependency install
+
+This usually happens when installing Pillow on Raspberry Pi. Try these solutions:
+
+**Solution 1: Install system dependencies one by one**
+```bash
+sudo apt update
+sudo apt install -y libjpeg-dev
+sudo apt install -y zlib1g-dev  
+sudo apt install -y libpng-dev
+```
+
+**Solution 2: Clear package cache and retry**
+```bash
+sudo apt clean
+sudo apt update
+sudo apt install -y libjpeg-dev zlib1g-dev libpng-dev
+```
+
+**Solution 3: Check storage space**
+```bash
+df -h
+# If storage is low, free up space:
+sudo apt autoremove
+sudo apt clean
+```
+
+**Solution 4: Install without OCR (temporary workaround)**
+```bash
+# Use minimal installer (no screenshot feature)
+chmod +x install_minimal.sh
+./install_minimal.sh
+```
+This will install the bot without OCR support. The screenshot submission feature won't work, but everything else will.
+
+**Solution 5: Install Pillow from apt instead**
+```bash
+sudo apt install -y python3-pil
+# Then install other packages
+pip install discord.py python-dotenv asyncpg google-generativeai
+```
+
+**Solution 6: Increase swap memory (if low RAM)**
+```bash
+sudo dphys-swapfile swapoff
+sudo nano /etc/dphys-swapfile
+# Change CONF_SWAPSIZE=100 to CONF_SWAPSIZE=512
+sudo dphys-swapfile setup
+sudo dphys-swapfile swapon
+```
+
 ## Future Features
 
 - Queue management system

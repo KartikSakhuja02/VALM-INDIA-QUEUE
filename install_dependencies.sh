@@ -11,9 +11,27 @@ if [[ ! -f /etc/os-release ]]; then
     echo "Warning: This script is designed for Linux/Raspberry Pi"
 fi
 
-echo "Step 1: Installing system dependencies..."
+echo "Step 1: Installing system dependencies (one by one)..."
+echo "Updating package lists..."
 sudo apt update
-sudo apt install -y libjpeg-dev zlib1g-dev libpng-dev
+
+echo ""
+echo "Installing libjpeg-dev..."
+sudo apt install -y libjpeg-dev || {
+    echo "Warning: Failed to install libjpeg-dev, continuing..."
+}
+
+echo ""
+echo "Installing zlib1g-dev..."
+sudo apt install -y zlib1g-dev || {
+    echo "Warning: Failed to install zlib1g-dev, continuing..."
+}
+
+echo ""
+echo "Installing libpng-dev..."
+sudo apt install -y libpng-dev || {
+    echo "Warning: Failed to install libpng-dev, continuing..."
+}
 
 echo ""
 echo "Step 2: Upgrading pip..."
@@ -35,7 +53,7 @@ packages=(
 for package in "${packages[@]}"; do
     echo ""
     echo "Installing $package..."
-    pip install "$package" || {
+    pip install "$package" --no-cache-dir || {
         echo "Failed to install $package"
         exit 1
     }

@@ -7,18 +7,31 @@ import asyncio
 import random
 from typing import Optional
 from datetime import datetime
-import google.generativeai as genai
 import io
 import re
+
+# Try to import OCR dependencies (optional)
+try:
+    import google.generativeai as genai
+    from PIL import Image
+    OCR_AVAILABLE = True
+    # Configure Gemini API if key is available
+    if os.getenv('GEMINI_API_KEY'):
+        genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+    else:
+        OCR_AVAILABLE = False
+        print("⚠️  Warning: GEMINI_API_KEY not set. OCR features will be disabled.")
+except ImportError as e:
+    OCR_AVAILABLE = False
+    print(f"⚠️  Warning: OCR dependencies not installed. Screenshot feature will be disabled.")
+    print(f"   Missing: {e}")
+    print("   To enable OCR, install: pip install google-generativeai Pillow")
 
 # Dictionary to track active matches
 active_matches = {}
 
 # Lock to prevent race condition with autoping
 autoping_lock = asyncio.Lock()
-
-# Configure Gemini API
-genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
 
 class ReadyButton(discord.ui.Button):
     """Button for players to confirm they're ready"""
@@ -145,6 +158,17 @@ class SubmitSSButton(discord.ui.Button):
         match_data = active_matches.get(self.view.match_id)
         if not match_data:
             await interaction.response.send_message("❌ Match data not found.", ephemeral=True)
+            return
+        
+        # Check if OCR is available
+        if not OCR_AVAILABLE:
+            await interaction.response.send_message(
+                "❌ **Screenshot feature is not available!**\n\n"
+                "OCR dependencies are not installed on this server.\n"
+                "Please contact the administrator to enable this feature.\n\n"
+                "Required: `pip install google-generativeai Pillow`",
+                ephemeral=True
+            )
             return
         
         player1_id = match_data['player1'].id
