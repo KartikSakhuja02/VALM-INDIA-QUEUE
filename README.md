@@ -205,6 +205,8 @@ VALM-India-Queue/
 - `QUEUE_CHANNEL_ID` - Channel ID where the queue UI will be posted on bot startup (required)
 - `MATCH_CATEGORY_ID` - Category ID where private match text/voice channels will be created (required)
 - `LOGS_CHANNEL_ID` - Channel ID where match results will be logged (required)
+- `VERIFICATION_ROLE_ID` - Role ID to assign when users verify for scrimmish (required for verification)
+- `VERIFICATION_CHANNEL_ID` - Channel ID where verification UI should be posted (required for verification)
 
 ### Getting Channel/Category IDs
 
@@ -212,14 +214,20 @@ VALM-India-Queue/
    - User Settings → App Settings → Advanced → Enable "Developer Mode"
 2. Right-click on a channel and select "Copy Channel ID"
 3. Right-click on a category and select "Copy Category ID"
-4. Paste these IDs into your `.env` file
+4. Right-click on a role and select "Copy Role ID"
+5. Paste these IDs into your `.env` file
 
 ## Commands
 
 ### General Commands
 - `/ping` - Shows bot latency and uptime (or pings players not in VC when used in a match channel)
 - `/ign <player_ign>` - Register your in-game name (required to participate in ranked matches)
+Verification Commands (Admin Only)
+- `/setup_verification` - Setup the verification UI in the current channel
+  - Players click the ✅ button to get verified for scrimmish
+  - Button remains functional even after bot restart
 
+### 
 ### Queue Commands
 - `/queue_status` - Check current queue status
 - `/cancel` - Vote to cancel the current match (use in match channel, requires both players to vote)
@@ -232,10 +240,11 @@ VALM-India-Queue/
 ### MMR Management (Admin Only)
 - `/mmr add <player> <value>` - Add MMR to a player
 - `/mmr subtract <player> <value>` - Subtract MMR from a player
-
-### Player Management (Admin Only)
-- `/player sub <player_out> <player_in>` - Substitute a player in an active match
-
+Get verified**: Click the ✅ "Get Verified" button in the verification channel
+2. **Register your IGN**: `/ign YourGameName`
+3. **Join the queue**: Click the "Join Queue" button in the queue channel
+4. **Wait for match**: When 2 players queue, a private match lobby is created
+5
 ### How to Use
 1. **Register your IGN**: `/ign YourGameName`
 2. **Join the queue**: Click the "Join Queue" button in the queue channel

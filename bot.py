@@ -51,7 +51,7 @@ class VALMBot(commands.Bot):
     
     async def load_cogs(self):
         """Load all cogs from the cogs directory"""
-        cogs = ['cogs.skrimmish']
+        cogs = ['cogs.skrimmish', 'cogs.verification']
         for cog in cogs:
             try:
                 await self.load_extension(cog)
