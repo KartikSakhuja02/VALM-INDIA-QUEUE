@@ -1091,12 +1091,13 @@ class SkrimmishCog(commands.Cog):
                 mentions = " ".join([player.mention for player in not_in_vc])
                 embed = discord.Embed(
                     title="🔔 Voice Channel Reminder",
-                    description=f"{mentions}\n\nPlease join {voice_channel.mention} to proceed with the match!",
+                    description=f"Please join {voice_channel.mention} to proceed with the match!",
                     color=0xFF0000
                 )
                 embed.set_footer(text=f"Reminder sent by {interaction.user.display_name}")
                 
-                await interaction.response.send_message(embed=embed)
+                # Send mentions in content (not embed) to trigger notifications
+                await interaction.response.send_message(content=mentions, embed=embed)
         else:
             # Not in a match channel - show bot latency
             import time
