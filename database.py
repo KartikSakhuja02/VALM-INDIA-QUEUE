@@ -244,6 +244,28 @@ class Database:
             )
             return result
     
+    async def update_player_mmr(self, user_id: int, mmr_change: int):
+        """Update a player's MMR (can be positive or negative)"""
+        async with self.pool.acquire() as conn:
+            # Update MMR and last_updated timestamp
+            new_mmr = await conn.fetchval(
+                '''UPDATE player_profiles 
+                   SET mmr = mmr + $2, last_updated = CURRENT_TIMESTAMP
+                   WHERE user_id = $1
+                   RETURNING mmr''',
+                user_id, mmr_change
+            )
+            
+            # Update peak_mmr if new MMR is higher
+            await conn.execute(
+                '''UPDATE player_profiles 
+                   SET peak_mmr = GREATEST(peak_mmr, mmr)
+                   WHERE user_id = $1''',
+                user_id
+            )
+            
+            return new_mmr
+    
     # Autoping Configuration Methods
     async def set_autoping(self, channel_id: int, role_id: int, size: int, delete_after: int):
         """Set autoping configuration for a channel"""

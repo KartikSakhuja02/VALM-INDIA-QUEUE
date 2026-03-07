@@ -229,6 +229,10 @@ VALM-India-Queue/
 - `/autoping remove` - Remove auto-ping configuration (admin only)
 - `/autoping status` - View current auto-ping settings
 
+### MMR Management (Admin Only)
+- `/mmr add <player> <value>` - Add MMR to a player
+- `/mmr subtract <player> <value>` - Subtract MMR from a player
+
 ### How to Use
 1. **Register your IGN**: `/ign YourGameName`
 2. **Join the queue**: Click the "Join Queue" button in the queue channel

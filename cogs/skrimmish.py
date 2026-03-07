@@ -1236,6 +1236,77 @@ class SkrimmishCog(commands.Cog):
         embed.add_field(name="Status", value=ping_status, inline=False)
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    # MMR command group
+    mmr_group = app_commands.Group(name="mmr", description="Manage player MMR (admin only)")
+    
+    @mmr_group.command(name="add", description="Add MMR to a player")
+    @app_commands.describe(
+        player="The player to add MMR to",
+        value="Amount of MMR to add"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def mmr_add(self, interaction: discord.Interaction, player: discord.Member, value: int):
+        """Add MMR to a player"""
+        # Check if value is positive
+        if value <= 0:
+            await interaction.response.send_message("❌ Value must be positive!", ephemeral=True)
+            return
+        
+        # Check if player is registered
+        is_registered = await db.is_player_registered(player.id)
+        if not is_registered:
+            await interaction.response.send_message(
+                f"❌ {player.mention} is not registered! They need to use `/ign` first.",
+                ephemeral=True
+            )
+            return
+        
+        # Update MMR
+        new_mmr = await db.update_player_mmr(player.id, value)
+        
+        embed = discord.Embed(
+            title="✅ MMR Added",
+            description=f"Added **{value}** MMR to {player.mention}",
+            color=0x00FF00
+        )
+        embed.add_field(name="New MMR", value=f"{new_mmr}", inline=True)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @mmr_group.command(name="subtract", description="Subtract MMR from a player")
+    @app_commands.describe(
+        player="The player to subtract MMR from",
+        value="Amount of MMR to subtract"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def mmr_subtract(self, interaction: discord.Interaction, player: discord.Member, value: int):
+        """Subtract MMR from a player"""
+        # Check if value is positive
+        if value <= 0:
+            await interaction.response.send_message("❌ Value must be positive!", ephemeral=True)
+            return
+        
+        # Check if player is registered
+        is_registered = await db.is_player_registered(player.id)
+        if not is_registered:
+            await interaction.response.send_message(
+                f"❌ {player.mention} is not registered! They need to use `/ign` first.",
+                ephemeral=True
+            )
+            return
+        
+        # Update MMR (negative value)
+        new_mmr = await db.update_player_mmr(player.id, -value)
+        
+        embed = discord.Embed(
+            title="✅ MMR Subtracted",
+            description=f"Subtracted **{value}** MMR from {player.mention}",
+            color=0xED4245
+        )
+        embed.add_field(name="New MMR", value=f"{new_mmr}", inline=True)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(SkrimmishCog(bot))
