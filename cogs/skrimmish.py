@@ -14,6 +14,9 @@ active_matches = {}
 # Set to track which channels have already sent autoping (resets when /autoping set is run)
 autoping_sent = set()
 
+# Lock to prevent race condition with autoping
+autoping_lock = asyncio.Lock()
+
 class CancelButton(discord.ui.Button):
     """Button for voting on match cancellation"""
     def __init__(self, vote_type: str):
@@ -389,31 +392,33 @@ class QueueButton(discord.ui.Button):
         await self.view.update_queue_display(interaction)
         
         # Send autoping if configured (only once until admin resets it)
-        autoping_config = await db.get_autoping(interaction.channel_id)
-        if autoping_config and interaction.channel_id not in autoping_sent:
-            role = interaction.guild.get_role(autoping_config['role_id'])
-            if role:
-                # Mark this channel as having sent autoping
-                autoping_sent.add(interaction.channel_id)
-                
-                # Repeat the role mention 'size' times
-                ping_content = " ".join([role.mention] * autoping_config['size'])
-                
-                # Send the ping message
-                ping_msg = await interaction.channel.send(ping_content)
-                
-                # Schedule deletion after specified time
-                delete_after = autoping_config['delete_after']
-                if delete_after > 0:
-                    async def delete_ping():
-                        await asyncio.sleep(delete_after)
-                        try:
-                            await ping_msg.delete()
-                        except:
-                            pass
+        # Use a lock to prevent race condition if multiple players join simultaneously
+        async with autoping_lock:
+            autoping_config = await db.get_autoping(interaction.channel_id)
+            if autoping_config and interaction.channel_id not in autoping_sent:
+                role = interaction.guild.get_role(autoping_config['role_id'])
+                if role:
+                    # Mark this channel as having sent autoping
+                    autoping_sent.add(interaction.channel_id)
                     
-                    # Start deletion task
-                    self.view.bot.loop.create_task(delete_ping())
+                    # Repeat the role mention 'size' times
+                    ping_content = " ".join([role.mention] * autoping_config['size'])
+                    
+                    # Send the ping message
+                    ping_msg = await interaction.channel.send(ping_content)
+                    
+                    # Schedule deletion after specified time
+                    delete_after = autoping_config['delete_after']
+                    if delete_after > 0:
+                        async def delete_ping():
+                            await asyncio.sleep(delete_after)
+                            try:
+                                await ping_msg.delete()
+                            except:
+                                pass
+                        
+                        # Start deletion task
+                        self.view.bot.loop.create_task(delete_ping())
         
         # Check if we have 2 players (match ready)
         if len(queue) >= 2:
