@@ -2,24 +2,25 @@
 
 ## If pip install gets "Killed" (Out of Memory)
 
-### Option 1: Increase Swap (Recommended)
+### Option 1: Increase Swap (Recommended - Works on Any Linux)
 ```bash
-# Stop swap
-sudo dphys-swapfile swapoff
-
-# Edit swap config
-sudo nano /etc/dphys-swapfile
-# Change: CONF_SWAPSIZE=100
-# To: CONF_SWAPSIZE=1024
-
-# Apply changes
-sudo dphys-swapfile setup
-sudo dphys-swapfile swapon
-
-# Verify
+# Check current swap
 free -h
 
+# Create a 1GB swap file
+sudo fallocate -l 1G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+
+# Verify it's active
+free -h
+
+# Make it permanent (survives reboot)
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
 # Now try installing again
+cd ~/Documents/Valorant-Mobile-India-Queue
 source venv/bin/activate
 pip install --no-cache-dir google-generativeai==0.8.0
 pip install --no-cache-dir Pillow==10.2.0
