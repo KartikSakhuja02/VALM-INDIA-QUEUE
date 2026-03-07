@@ -95,7 +95,17 @@ class VerificationCog(commands.Cog):
             )
             return
         
-        role = inter� VALM India Queue - Verification",
+        role = interaction.guild.get_role(int(role_id))
+        if not role:
+            await interaction.response.send_message(
+                "❌ Verification role not found. Please check the VERIFICATION_ROLE_ID in .env.",
+                ephemeral=True
+            )
+            return
+        
+        # Create embed
+        embed = discord.Embed(
+            title="🎯 VALM India Queue - Verification",
             description=(
                 "**Welcome to Valorant Mobile India's Premier Matchmaking System!**\n\n"
                 "Get verified to unlock access to competitive skrimmish matches, "
@@ -116,17 +126,7 @@ class VerificationCog(commands.Cog):
         embed.set_footer(
             text="VALM India • Competitive Skrimmish Matchmaking",
             icon_url=interaction.guild.icon.url if interaction.guild.icon else None
-        
-        embed = discord.Embed(
-            title="🎮 Scrimmish Verification",
-            description=(
-                "Welcome to Valorant Mobile India Queue!\n\n"
-                f"Click the button below to get the **{role.name}** role and access scrimmish matches.\n\n"
-                "✅ **Get Verified** - Gain access to competitive scrimmishes"
-            ),
-            color=0x00FF00  # Green color
         )
-        embed.set_footer(text="Your progress will be tracked across all matches!")
         
         # Send the verification message
         view = VerificationView()
