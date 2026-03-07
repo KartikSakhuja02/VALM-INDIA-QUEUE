@@ -1178,7 +1178,7 @@ class SkrimmishCog(commands.Cog):
         embed.add_field(name="Repeat Count", value=f"{size}x", inline=True)
         embed.add_field(name="Delete After", value=f"{delete_after}s" if delete_after > 0 else "Never", inline=True)
         
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
     
     @autoping_group.command(name="remove", description="Remove auto-ping configuration")
     @app_commands.checks.has_permissions(administrator=True)
