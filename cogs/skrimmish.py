@@ -497,10 +497,13 @@ class QueueButton(discord.ui.Button):
             )
             initial_embed.set_footer(text="Match will be cancelled if both players don't join within 5 minutes")
             
-            await text_channel.send(
+            initial_message = await text_channel.send(
                 content=f"{member1.mention} {member2.mention}",
                 embed=initial_embed
             )
+            
+            # Store initial message reference for updates
+            active_matches[text_channel.id]['initial_message'] = initial_message
             
             # Increment the match number for next time
             await db.set_config('next_match_number', str(match_number + 1))
@@ -1383,6 +1386,28 @@ class SkrimmishCog(commands.Cog):
         if old_team in match_data['votes']:
             new_team = str(player_in.display_name)
             match_data['votes'][new_team] = match_data['votes'].pop(old_team)
+        
+        # Update the initial match message with new players
+        if 'initial_message' in match_data:
+            initial_message = match_data['initial_message']
+            new_player1 = match_data['player1']
+            new_player2 = match_data['player2']
+            match_number = match_data['match_number']
+            
+            updated_embed = discord.Embed(
+                title=f"Scrimmish Match #{match_number:04d}",
+                description=f"{new_player1.mention} vs {new_player2.mention}\n\nPlease join {voice_channel.mention} within 5 minutes to proceed.",
+                color=0xED4245
+            )
+            updated_embed.set_footer(text="Match will be cancelled if both players don't join within 5 minutes")
+            
+            try:
+                await initial_message.edit(
+                    content=f"{new_player1.mention} {new_player2.mention}",
+                    embed=updated_embed
+                )
+            except:
+                pass  # Message might be deleted or inaccessible
         
         # Send substitution notification
         embed = discord.Embed(
