@@ -385,6 +385,30 @@ class QueueButton(discord.ui.Button):
         # Update the queue display
         await self.view.update_queue_display(interaction)
         
+        # Send autoping if configured
+        autoping_config = await db.get_autoping(interaction.channel_id)
+        if autoping_config:
+            role = interaction.guild.get_role(autoping_config['role_id'])
+            if role:
+                # Repeat the role mention 'size' times
+                ping_content = " ".join([role.mention] * autoping_config['size'])
+                
+                # Send the ping message
+                ping_msg = await interaction.channel.send(ping_content)
+                
+                # Schedule deletion after specified time
+                delete_after = autoping_config['delete_after']
+                if delete_after > 0:
+                    async def delete_ping():
+                        await asyncio.sleep(delete_after)
+                        try:
+                            await ping_msg.delete()
+                        except:
+                            pass
+                    
+                    # Start deletion task
+                    self.view.bot.loop.create_task(delete_ping())
+        
         # Check if we have 2 players (match ready)
         if len(queue) >= 2:
             # Create match with first 2 players
@@ -1120,6 +1144,80 @@ class SkrimmishCog(commands.Cog):
             embed.set_footer(text=f"Requested by {interaction.user.name}")
             
             await interaction.response.send_message(embed=embed)
+    
+    # Autoping command group
+    autoping_group = app_commands.Group(name="autoping", description="Configure automatic role pings when players join queue")
+    
+    @autoping_group.command(name="set", description="Set up auto-ping for queue joins")
+    @app_commands.describe(
+        role="The role to ping",
+        size="How many times to repeat the ping (1-10)",
+        delete_after="Delete the ping after this many seconds (0 = don't delete)"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def autoping_set(self, interaction: discord.Interaction, role: discord.Role, size: int, delete_after: int):
+        """Set up auto-ping configuration"""
+        # Validate inputs
+        if size < 1 or size > 10:
+            await interaction.response.send_message("❌ Size must be between 1 and 10!", ephemeral=True)
+            return
+        
+        if delete_after < 0:
+            await interaction.response.send_message("❌ Delete_after must be 0 or positive!", ephemeral=True)
+            return
+        
+        # Save configuration
+        await db.set_autoping(interaction.channel_id, role.id, size, delete_after)
+        
+        embed = discord.Embed(
+            title="✅ Auto-Ping Configured",
+            description=f"When players join the queue in this channel:",
+            color=0x00FF00
+        )
+        embed.add_field(name="Role", value=role.mention, inline=False)
+        embed.add_field(name="Repeat Count", value=f"{size}x", inline=True)
+        embed.add_field(name="Delete After", value=f"{delete_after}s" if delete_after > 0 else "Never", inline=True)
+        
+        await interaction.response.send_message(embed=embed)
+    
+    @autoping_group.command(name="remove", description="Remove auto-ping configuration")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def autoping_remove(self, interaction: discord.Interaction):
+        """Remove auto-ping configuration"""
+        await db.remove_autoping(interaction.channel_id)
+        
+        embed = discord.Embed(
+            title="✅ Auto-Ping Removed",
+            description="Auto-ping has been disabled for this channel.",
+            color=0x00FF00
+        )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @autoping_group.command(name="status", description="View current auto-ping configuration")
+    async def autoping_status(self, interaction: discord.Interaction):
+        """View auto-ping configuration"""
+        config = await db.get_autoping(interaction.channel_id)
+        
+        if not config:
+            await interaction.response.send_message(
+                "❌ No auto-ping configured for this channel!",
+                ephemeral=True
+            )
+            return
+        
+        role = interaction.guild.get_role(config['role_id'])
+        
+        embed = discord.Embed(
+            title="📊 Auto-Ping Status",
+            description="Current configuration for this channel:",
+            color=0xED4245
+        )
+        embed.add_field(name="Role", value=role.mention if role else "Role not found", inline=False)
+        embed.add_field(name="Repeat Count", value=f"{config['size']}x", inline=True)
+        embed.add_field(name="Delete After", value=f"{config['delete_after']}s" if config['delete_after'] > 0 else "Never", inline=True)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(SkrimmishCog(bot))

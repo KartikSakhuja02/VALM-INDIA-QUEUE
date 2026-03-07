@@ -225,6 +225,9 @@ VALM-India-Queue/
 - `/cancel` - Vote to cancel the current match (use in match channel, requires both players to vote)
 - `/clear_queue` - Clear the entire queue (admin only)
 - `/setup_queue` - Setup the queue UI in the current channel (admin only)
+- `/autoping set <role> <size> <delete_after>` - Configure automatic role pings when players join (admin only)
+- `/autoping remove` - Remove auto-ping configuration (admin only)
+- `/autoping status` - View current auto-ping settings
 
 ### How to Use
 1. **Register your IGN**: `/ign YourGameName`

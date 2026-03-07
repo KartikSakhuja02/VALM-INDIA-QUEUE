@@ -97,6 +97,17 @@ class Database:
                 )
             ''')
             
+            # Create autoping_config table
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS autoping_config (
+                    channel_id BIGINT PRIMARY KEY,
+                    role_id BIGINT NOT NULL,
+                    size INTEGER NOT NULL,
+                    delete_after INTEGER NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
             print("✅ Database schema initialized")
     
     # Bot Config Methods
@@ -232,6 +243,35 @@ class Database:
                 user_id
             )
             return result
+    
+    # Autoping Configuration Methods
+    async def set_autoping(self, channel_id: int, role_id: int, size: int, delete_after: int):
+        """Set autoping configuration for a channel"""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                '''INSERT INTO autoping_config (channel_id, role_id, size, delete_after, updated_at)
+                   VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+                   ON CONFLICT (channel_id) 
+                   DO UPDATE SET role_id = $2, size = $3, delete_after = $4, updated_at = CURRENT_TIMESTAMP''',
+                channel_id, role_id, size, delete_after
+            )
+    
+    async def get_autoping(self, channel_id: int):
+        """Get autoping configuration for a channel"""
+        async with self.pool.acquire() as conn:
+            config = await conn.fetchrow(
+                'SELECT * FROM autoping_config WHERE channel_id = $1',
+                channel_id
+            )
+            return config
+    
+    async def remove_autoping(self, channel_id: int):
+        """Remove autoping configuration for a channel"""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                'DELETE FROM autoping_config WHERE channel_id = $1',
+                channel_id
+            )
 
 # Global database instance
 db = Database()
