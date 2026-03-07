@@ -11,9 +11,6 @@ from datetime import datetime
 # Dictionary to track active matches
 active_matches = {}
 
-# Set to track which channels have already sent autoping (resets when /autoping set is run)
-autoping_sent = set()
-
 # Lock to prevent race condition with autoping
 autoping_lock = asyncio.Lock()
 
@@ -391,16 +388,13 @@ class QueueButton(discord.ui.Button):
         # Update the queue display
         await self.view.update_queue_display(interaction)
         
-        # Send autoping if configured (only once until admin resets it)
+        # Send autoping if configured and queue has exactly 1 player (1 in queue, 1 more needed)
         # Use a lock to prevent race condition if multiple players join simultaneously
         async with autoping_lock:
             autoping_config = await db.get_autoping(interaction.channel_id)
-            if autoping_config and interaction.channel_id not in autoping_sent:
+            if autoping_config and len(queue) == 1:
                 role = interaction.guild.get_role(autoping_config['role_id'])
                 if role:
-                    # Mark this channel as having sent autoping
-                    autoping_sent.add(interaction.channel_id)
-                    
                     # Repeat the role mention 'size' times
                     ping_content = " ".join([role.mention] * autoping_config['size'])
                     
@@ -1183,10 +1177,6 @@ class SkrimmishCog(commands.Cog):
         # Save configuration
         await db.set_autoping(interaction.channel_id, role.id, size, delete_after)
         
-        # Reset the autoping flag for this channel (allows it to ping again)
-        if interaction.channel_id in autoping_sent:
-            autoping_sent.remove(interaction.channel_id)
-        
         embed = discord.Embed(
             title="✅ Auto-Ping Configured",
             description=f"When players join the queue in this channel:",
@@ -1203,10 +1193,6 @@ class SkrimmishCog(commands.Cog):
     async def autoping_remove(self, interaction: discord.Interaction):
         """Remove auto-ping configuration"""
         await db.remove_autoping(interaction.channel_id)
-        
-        # Clear the sent flag if it exists
-        if interaction.channel_id in autoping_sent:
-            autoping_sent.remove(interaction.channel_id)
         
         embed = discord.Embed(
             title="✅ Auto-Ping Removed",
@@ -1230,9 +1216,6 @@ class SkrimmishCog(commands.Cog):
         
         role = interaction.guild.get_role(config['role_id'])
         
-        # Check if autoping has already been sent
-        ping_status = "Already sent (reset with /autoping set)" if interaction.channel_id in autoping_sent else "Ready to send"
-        
         embed = discord.Embed(
             title="📊 Auto-Ping Status",
             description="Current configuration for this channel:",
@@ -1241,7 +1224,7 @@ class SkrimmishCog(commands.Cog):
         embed.add_field(name="Role", value=role.mention if role else "Role not found", inline=False)
         embed.add_field(name="Repeat Count", value=f"{config['size']}x", inline=True)
         embed.add_field(name="Delete After", value=f"{config['delete_after']}s" if config['delete_after'] > 0 else "Never", inline=True)
-        embed.add_field(name="Status", value=ping_status, inline=False)
+        embed.add_field(name="Trigger", value="Pings when queue has 1 player (1 more needed)", inline=False)
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
     
