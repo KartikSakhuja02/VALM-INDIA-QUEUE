@@ -355,24 +355,45 @@ class Database:
                 '''SELECT user_id, discord_username, player_ign, mmr, wins, losses, 
                           games, streak, winrate, peak_mmr, peak_streak
                    FROM player_profiles 
-                   WHERE games > 0
-                   ORDER BY mmr DESC 
+                   ORDER BY mmr DESC, wins DESC
                    LIMIT $1 OFFSET $2''',
                 limit, offset
             )
             return leaderboard
     
     async def get_total_players(self):
-        """Get the total number of players who have played at least one game
+        """Get the total number of registered players
         
         Returns:
             Integer count of players
         """
         async with self.pool.acquire() as conn:
             result = await conn.fetchval(
-                '''SELECT COUNT(*) FROM player_profiles WHERE games > 0'''
+                '''SELECT COUNT(*) FROM player_profiles'''
             )
             return result if result else 0
+    
+    async def reset_all_player_stats(self):
+        """Reset all player stats to default values (1000 MMR, 0 wins/losses/games)
+        
+        Returns:
+            Number of players reset
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                '''UPDATE player_profiles
+                   SET mmr = 1000,
+                       wins = 0,
+                       losses = 0,
+                       games = 0,
+                       streak = 0,
+                       winrate = 0,
+                       peak_mmr = 1000,
+                       peak_streak = 0,
+                       last_updated = CURRENT_TIMESTAMP'''
+            )
+            # Extract number of rows updated from result string like "UPDATE 5"
+            return int(result.split()[-1]) if result else 0
     
     # Autoping Configuration Methods
     async def set_autoping(self, channel_id: int, role_id: int, size: int, delete_after: int):

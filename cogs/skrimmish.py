@@ -1255,60 +1255,40 @@ class LeaderboardView(discord.ui.View):
             print(f"Error updating leaderboard: {e}")
 
 async def build_leaderboard_embed(players, page: int, total_pages: int, offset: int):
-    """Build the leaderboard embed"""
+    """Build the leaderboard embed - NeatQueue style"""
     if not players:
         embed = discord.Embed(
-            title="🏆 Skrimmish Leaderboard",
-            description="No players have played any matches yet!",
-            color=0xFFD700
+            title="Valorant Mobile India Matchmaking MMR Leaderboard",
+            description="No registered players found!",
+            color=0x5865F2
         )
         embed.set_footer(text=f"Page {page} of {total_pages}")
         return embed
     
     embed = discord.Embed(
-        title="🏆 Skrimmish Leaderboard",
-        description="Ranked by MMR",
-        color=0xFFD700
+        title="Valorant Mobile India Matchmaking MMR Leaderboard",
+        color=0x5865F2
     )
     
-    # Add players to embed
+    # Build description with all players in NeatQueue format
+    description_lines = []
     for idx, player in enumerate(players, start=offset + 1):
-        # Get rank emoji
-        if idx == 1:
-            rank_emoji = "🥇"
-        elif idx == 2:
-            rank_emoji = "🥈"
-        elif idx == 3:
-            rank_emoji = "🥉"
-        else:
-            rank_emoji = f"`#{idx}`"
+        # Get rank indicator (green/red triangle)
+        rank_indicator = "▲" if player['streak'] >= 0 else "▼"
         
-        # Get streak emoji
-        streak = player['streak']
-        if streak > 0:
-            streak_display = f"🔥 {streak}W"
-        elif streak < 0:
-            streak_display = f"❄️ {abs(streak)}L"
-        else:
-            streak_display = "➖"
+        # Get player name
+        player_name = player['player_ign'] or player['discord_username'] or f"User{player['user_id']}"
         
-        # Format player info
-        player_name = player['discord_username'] or f"<@{player['user_id']}>"
-        ign = player['player_ign']
+        # Format: ▲ rank. name (MMR) (W-L)
         mmr = player['mmr']
         wins = player['wins']
         losses = player['losses']
-        winrate = player['winrate']
         
-        embed.add_field(
-            name=f"{rank_emoji} {player_name}",
-            value=f"**IGN:** {ign}\n"
-                  f"**MMR:** {mmr:,} | **W/L:** {wins}-{losses} ({winrate:.1f}%)\n"
-                  f"**Streak:** {streak_display}",
-            inline=False
-        )
+        line = f"{rank_indicator} **{idx}.** {player_name} `({mmr})` `({wins}-{losses})`"
+        description_lines.append(line)
     
-    embed.set_footer(text=f"Page {page} of {total_pages} • Auto-updates when stats change")
+    embed.description = "\n".join(description_lines)
+    embed.set_footer(text=f"Page {page}")
     embed.timestamp = discord.utils.utcnow()
     return embed
 
@@ -1791,6 +1771,29 @@ class SkrimmishCog(commands.Cog):
         
         await interaction.followup.send(
             "✅ Leaderboard created! It will automatically update when player stats change.",
+            ephemeral=True
+        )
+    
+    @app_commands.command(name="reset-leaderboard", description="Reset all player stats to 0 (CAUTION: Cannot be undone!)")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def reset_leaderboard(self, interaction: discord.Interaction):
+        """Reset all player stats to default values"""
+        await interaction.response.defer(ephemeral=True)
+        
+        # Reset all player stats
+        reset_count = await db.reset_all_player_stats()
+        
+        # Update all active leaderboards
+        await update_all_leaderboards()
+        
+        await interaction.followup.send(
+            f"✅ Successfully reset stats for {reset_count} players!\n"
+            f"All players now have:\n"
+            f"• MMR: 1000\n"
+            f"• Wins: 0\n"
+            f"• Losses: 0\n"
+            f"• Games: 0\n"
+            f"• Streak: 0",
             ephemeral=True
         )
     
