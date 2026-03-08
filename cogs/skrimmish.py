@@ -1262,6 +1262,7 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
             description="No registered players found!",
             color=0x2B2D31
         )
+        embed.set_footer(text=f"Page {page} • Updated at")
         embed.timestamp = discord.utils.utcnow()
         return embed
     
@@ -1289,6 +1290,7 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
         description_lines.append(line)
     
     embed.description = "\n".join(description_lines)
+    embed.set_footer(text=f"Page {page} • Updated at")
     embed.timestamp = discord.utils.utcnow()
     return embed
 
@@ -1535,6 +1537,9 @@ class SkrimmishCog(commands.Cog):
                 embed.add_field(name="Starting Stats", value="MMR: 0\nGames: 0\nWins: 0\nLosses: 0", inline=False)
             
             await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+            # Update all active leaderboards to show new player
+            await update_all_leaderboards()
         else:
             await interaction.response.send_message(
                 f"❌ Registration failed: {message}",
