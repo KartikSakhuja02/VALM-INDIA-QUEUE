@@ -1262,7 +1262,7 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
             description="No registered players found!",
             color=0x5865F2
         )
-        embed.set_footer(text=f"Page {page} of {total_pages}")
+        embed.timestamp = discord.utils.utcnow()
         return embed
     
     embed = discord.Embed(
@@ -1279,16 +1279,15 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
         # Get player name
         player_name = player['player_ign'] or player['discord_username'] or f"User{player['user_id']}"
         
-        # Format: ▲ rank. name (MMR) (W-L)
+        # Format: ▲ rank. name (MMR) (W-L) - exactly like NeatQueue
         mmr = player['mmr']
         wins = player['wins']
         losses = player['losses']
         
-        line = f"{rank_indicator} **{idx}.** {player_name} `({mmr})` `({wins}-{losses})`"
+        line = f"{rank_indicator} {idx}. {player_name} ({mmr}) ({wins}-{losses})"
         description_lines.append(line)
     
     embed.description = "\n".join(description_lines)
-    embed.set_footer(text=f"Page {page}")
     embed.timestamp = discord.utils.utcnow()
     return embed
 
