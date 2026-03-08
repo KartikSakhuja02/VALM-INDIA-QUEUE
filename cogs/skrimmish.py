@@ -32,6 +32,86 @@ active_matches = {}
 # Lock to prevent race condition with autoping
 autoping_lock = asyncio.Lock()
 
+# MMR Rank Thresholds and Role IDs
+MMR_RANKS = [
+    (700, 850, 'IRON_ROLE_ID', 'Iron'),
+    (850, 1000, 'BRONZE_ROLE_ID', 'Bronze'),
+    (1000, 1150, 'SILVER_ROLE_ID', 'Silver'),
+    (1150, 1300, 'GOLD_ROLE_ID', 'Gold'),
+    (1300, 1450, 'PLAT_ROLE_ID', 'Plat'),
+    (1450, 1600, 'DIAMOND_ROLE_ID', 'Diamond'),
+    (1600, 1750, 'ASCENDANT_ROLE_ID', 'Ascendant'),
+    (1750, 1900, 'IMMORTAL_ROLE_ID', 'Immortal'),
+    (1900, 2200, 'RADIANT_ROLE_ID', 'Radiant'),
+]
+
+def get_rank_role_id(mmr: int) -> tuple[int | None, str]:
+    """Get the appropriate rank role ID based on MMR
+    
+    Args:
+        mmr: Player's MMR value
+    
+    Returns:
+        Tuple of (role_id, rank_name) or (None, 'Unranked')
+    """
+    for min_mmr, max_mmr, env_key, rank_name in MMR_RANKS:
+        if min_mmr <= mmr < max_mmr:
+            role_id_str = os.getenv(env_key)
+            if role_id_str:
+                return int(role_id_str), rank_name
+            return None, rank_name
+    
+    # MMR above Radiant threshold
+    if mmr >= 2200:
+        role_id_str = os.getenv('RADIANT_ROLE_ID')
+        if role_id_str:
+            return int(role_id_str), 'Radiant'
+        return None, 'Radiant'
+    
+    return None, 'Unranked'
+
+async def update_player_rank_role(guild: discord.Guild, user_id: int, mmr: int):
+    """Update a player's rank role based on their MMR
+    
+    Args:
+        guild: Discord guild object
+        user_id: Player's Discord user ID
+        mmr: Player's current MMR
+    """
+    try:
+        member = guild.get_member(user_id)
+        if not member:
+            return
+        
+        # Get the new rank role
+        new_role_id, rank_name = get_rank_role_id(mmr)
+        if not new_role_id:
+            return
+        
+        new_role = guild.get_role(new_role_id)
+        if not new_role:
+            return
+        
+        # Get all rank role IDs
+        all_rank_role_ids = []
+        for _, _, env_key, _ in MMR_RANKS:
+            role_id_str = os.getenv(env_key)
+            if role_id_str:
+                all_rank_role_ids.append(int(role_id_str))
+        
+        # Remove all other rank roles
+        roles_to_remove = [role for role in member.roles if role.id in all_rank_role_ids and role.id != new_role_id]
+        if roles_to_remove:
+            await member.remove_roles(*roles_to_remove)
+        
+        # Add new rank role if not already assigned
+        if new_role not in member.roles:
+            await member.add_roles(new_role)
+            print(f"✅ Updated {member.display_name}'s rank to {rank_name} ({mmr} MMR)")
+    
+    except Exception as e:
+        print(f"❌ Error updating rank role for user {user_id}: {e}")
+
 class ReadyButton(discord.ui.Button):
     """Button for players to confirm they're ready"""
     def __init__(self):
@@ -423,6 +503,9 @@ RED_SCORE: 8"""
                         color=0x00FF00
                     )
                     await channel.send(embed=stats_embed)
+                    
+                    # Update rank role based on new MMR
+                    await update_player_rank_role(channel.guild, winner_user.id, winner_stats['mmr'])
             
             if loser_registered:
                 loser_stats = await db.update_player_stats(loser_user.id, won=False, mmr_change=-27)
@@ -437,6 +520,9 @@ RED_SCORE: 8"""
                         color=0xFF0000
                     )
                     await channel.send(embed=stats_embed)
+                    
+                    # Update rank role based on new MMR
+                    await update_player_rank_role(channel.guild, loser_user.id, loser_stats['mmr'])
             
             # Update all active leaderboards
             if winner_registered or loser_registered:
@@ -1534,9 +1620,13 @@ class SkrimmishCog(commands.Cog):
                     description=f"Welcome! Your in-game name has been registered as: **{player_ign}**\n\nYou can now participate in ranked matches and earn MMR!",
                     color=0x00FF00
                 )
-                embed.add_field(name="Starting Stats", value="MMR: 0\nGames: 0\nWins: 0\nLosses: 0", inline=False)
+                embed.add_field(name="Starting Stats", value="MMR: 700\nGames: 0\nWins: 0\nLosses: 0", inline=False)
             
             await interaction.response.send_message(embed=embed, ephemeral=True)
+            
+            # Assign initial rank role for new players (starting MMR is 700 = Iron)
+            if not is_registered:
+                await update_player_rank_role(interaction.guild, user_id, 700)
             
             # Update all active leaderboards to show new player
             await update_all_leaderboards()
