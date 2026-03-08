@@ -319,6 +319,27 @@ class Database:
             
             return updated
     
+    async def get_leaderboard(self, limit: int = 10):
+        """Get the top players by MMR
+        
+        Args:
+            limit: Number of players to return (default 10)
+        
+        Returns:
+            List of player profiles ordered by MMR
+        """
+        async with self.pool.acquire() as conn:
+            leaderboard = await conn.fetch(
+                '''SELECT user_id, discord_username, player_ign, mmr, wins, losses, 
+                          games, streak, winrate, peak_mmr, peak_streak
+                   FROM player_profiles 
+                   WHERE games > 0
+                   ORDER BY mmr DESC 
+                   LIMIT $1''',
+                limit
+            )
+            return leaderboard
+    
     # Autoping Configuration Methods
     async def set_autoping(self, channel_id: int, role_id: int, size: int, delete_after: int):
         """Set autoping configuration for a channel"""

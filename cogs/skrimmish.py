@@ -1528,6 +1528,70 @@ class SkrimmishCog(commands.Cog):
             
             await interaction.response.send_message(embed=embed)
     
+    @app_commands.command(name="leaderboard", description="View the top players by MMR")
+    async def leaderboard(self, interaction: discord.Interaction):
+        """Show the leaderboard with top players ranked by MMR"""
+        await interaction.response.defer()
+        
+        # Get top 10 players
+        top_players = await db.get_leaderboard(limit=10)
+        
+        if not top_players:
+            embed = discord.Embed(
+                title="📊 Leaderboard",
+                description="No players have played any matches yet!",
+                color=0xFFD700
+            )
+            await interaction.followup.send(embed=embed)
+            return
+        
+        # Build leaderboard embed
+        embed = discord.Embed(
+            title="🏆 Skrimmish Leaderboard - Top 10",
+            description="Ranked by MMR",
+            color=0xFFD700
+        )
+        
+        # Add players to embed
+        for idx, player in enumerate(top_players, start=1):
+            # Get rank emoji
+            if idx == 1:
+                rank_emoji = "🥇"
+            elif idx == 2:
+                rank_emoji = "🥈"
+            elif idx == 3:
+                rank_emoji = "🥉"
+            else:
+                rank_emoji = f"`#{idx}`"
+            
+            # Get streak emoji
+            streak = player['streak']
+            if streak > 0:
+                streak_display = f"🔥 {streak}W"
+            elif streak < 0:
+                streak_display = f"❄️ {abs(streak)}L"
+            else:
+                streak_display = "➖"
+            
+            # Format player info
+            player_name = player['discord_username'] or f"<@{player['user_id']}>"
+            ign = player['player_ign']
+            mmr = player['mmr']
+            wins = player['wins']
+            losses = player['losses']
+            winrate = player['winrate']
+            
+            embed.add_field(
+                name=f"{rank_emoji} {player_name}",
+                value=f"**IGN:** {ign}\n"
+                      f"**MMR:** {mmr:,} | **W/L:** {wins}-{losses} ({winrate:.1f}%)\n"
+                      f"**Streak:** {streak_display}",
+                inline=False
+            )
+        
+        embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+        await interaction.followup.send(embed=embed)
+    
     # Autoping command group
     autoping_group = app_commands.Group(name="autoping", description="Configure automatic role pings when players join queue")
     
