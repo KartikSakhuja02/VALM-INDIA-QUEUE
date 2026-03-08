@@ -3,6 +3,10 @@
 
 import os
 import sys
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Add venv to path
 sys.path.insert(0, '/home/kartiksakhuja02/Documents/Valorant-Mobile-India-Queue/venv/lib/python3.13/site-packages')
