@@ -329,24 +329,46 @@ RED_SCORE: 8"""
             p1_profile = await db.get_player_profile(player1.id)
             p2_profile = await db.get_player_profile(player2.id)
             
-            # Match IGNs to Discord users
+            # Debug: Print extracted IGNs and database IGNs
+            print(f"🔍 OCR extracted: Yellow='{yellow_player}' ({yellow_score}), Red='{red_player}' ({red_score})")
+            print(f"🔍 Database: P1='{p1_profile.get('player_ign') if p1_profile else None}', P2='{p2_profile.get('player_ign') if p2_profile else None}'")
+            print(f"🔍 Determined: Winner='{winner_ign}' ({winner_score}), Loser='{loser_ign}' ({loser_score})")
+            
+            # Match IGNs to Discord users with more flexible matching
+            def ign_matches(db_ign: str, ocr_ign: str) -> bool:
+                """Check if IGNs match (case-insensitive, whitespace-stripped)"""
+                if not db_ign or not ocr_ign:
+                    return False
+                db_clean = db_ign.lower().strip().replace(" ", "")
+                ocr_clean = ocr_ign.lower().strip().replace(" ", "")
+                return db_clean == ocr_clean or db_clean in ocr_clean or ocr_clean in db_clean
+            
             winner_user = None
             loser_user = None
             
-            if p1_profile and p1_profile['player_ign'].lower() == winner_ign.lower():
+            # Try to match winner
+            if p1_profile and ign_matches(p1_profile['player_ign'], winner_ign):
                 winner_user = player1
                 loser_user = player2
-            elif p2_profile and p2_profile['player_ign'].lower() == winner_ign.lower():
+                print(f"✅ Matched: P1 ({p1_profile['player_ign']}) = Winner ({winner_ign})")
+            elif p2_profile and ign_matches(p2_profile['player_ign'], winner_ign):
                 winner_user = player2
                 loser_user = player1
-            elif p1_profile and p1_profile['player_ign'].lower() == loser_ign.lower():
+                print(f"✅ Matched: P2 ({p2_profile['player_ign']}) = Winner ({winner_ign})")
+            # Try to match loser
+            elif p1_profile and ign_matches(p1_profile['player_ign'], loser_ign):
                 loser_user = player1
                 winner_user = player2
-            elif p2_profile and p2_profile['player_ign'].lower() == loser_ign.lower():
+                print(f"✅ Matched: P1 ({p1_profile['player_ign']}) = Loser ({loser_ign})")
+            elif p2_profile and ign_matches(p2_profile['player_ign'], loser_ign):
                 loser_user = player2
                 winner_user = player1
+                print(f"✅ Matched: P2 ({p2_profile['player_ign']}) = Loser ({loser_ign})")
             else:
-                raise ValueError("Could not match IGNs to registered players")
+                error_details = f"OCR found: '{winner_ign}' and '{loser_ign}'\n"
+                error_details += f"Database has: '{p1_profile.get('player_ign') if p1_profile else 'N/A'}' and '{p2_profile.get('player_ign') if p2_profile else 'N/A'}'\n"
+                error_details += f"Please make sure player IGNs in database match the screenshot exactly."
+                raise ValueError(f"Could not match IGNs to registered players\n\n{error_details}")
             
             # Delete processing message
             await processing_msg.delete()
