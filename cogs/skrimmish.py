@@ -9,23 +9,22 @@ from typing import Optional
 from datetime import datetime
 import io
 import re
+import base64
+import aiohttp
 
 # Try to import OCR dependencies (optional)
 try:
-    import google.generativeai as genai
     from PIL import Image
     OCR_AVAILABLE = True
-    # Configure Gemini API if key is available
-    if os.getenv('GEMINI_API_KEY'):
-        genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-    else:
+    # Check if API key is available
+    if not os.getenv('GEMINI_API_KEY'):
         OCR_AVAILABLE = False
         print("⚠️  Warning: GEMINI_API_KEY not set. OCR features will be disabled.")
 except ImportError as e:
     OCR_AVAILABLE = False
     print(f"⚠️  Warning: OCR dependencies not installed. Screenshot feature will be disabled.")
     print(f"   Missing: {e}")
-    print("   To enable OCR, install: pip install google-generativeai Pillow")
+    print("   To enable OCR, install: pip install Pillow")
 
 # Dictionary to track active matches
 active_matches = {}
@@ -242,11 +241,19 @@ class SubmitSSView(discord.ui.View):
             )
             processing_msg = await channel.send(embed=processing_embed)
             
-            # Use gemini-pro-vision (works with old google-generativeai 0.8.x)
-            model = genai.GenerativeModel('gemini-pro-vision')
-            
-            # Convert image bytes to PIL Image
+            # Convert image bytes to PIL Image and then to base64 for API
+            import base64
             image = Image.open(io.BytesIO(image_data))
+            
+            # Convert to RGB if needed
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Save to bytes
+            img_byte_arr = io.BytesIO()
+            image.save(img_byte_arr, format='JPEG')
+            img_byte_arr = img_byte_arr.getvalue()
+            image_b64 = base64.b64encode(img_byte_arr).decode('utf-8')
             
             prompt = """Analyze this Valorant Mobile match scoreboard screenshot and extract the following information:
 
@@ -267,9 +274,55 @@ RED_PLAYER: MatarPaneer
 YELLOW_SCORE: 10
 RED_SCORE: 8"""
             
-            # Pass PIL Image and prompt to generate_content
-            response = model.generate_content([prompt, image])
-            result_text = response.text
+            # Use direct REST API call to bypass deprecated SDK
+            import aiohttp
+            api_key = os.getenv('GEMINI_API_KEY')
+            url = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro-vision:generateContent?key={api_key}"
+            
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": prompt},
+                        {
+                            "inline_data": {
+                                "mime_type": "image/jpeg",
+                                "data": image_b64
+                            }
+                        }
+                    ]
+                }]
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        raise ValueError(f"API Error: {error_text}")
+                    result = await resp.json()
+            
+            result_text = result['candidates'][0]['content']['parts'][0]['text']
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": prompt},
+                        {
+                            "inline_data": {
+                                "mime_type": attachment.content_type or "image/jpeg",
+                                "data": image_b64
+                            }
+                        }
+                    ]
+                }]
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        raise ValueError(f"API Error: {error_text}")
+                    
+                    result = await resp.json()
+                    result_text = result['candidates'][0]['content']['parts'][0]['text']
             
             # Parse the response
             yellow_player_match = re.search(r'YELLOW_PLAYER:\s*(.+)', result_text, re.IGNORECASE)
