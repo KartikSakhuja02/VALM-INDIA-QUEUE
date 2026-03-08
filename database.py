@@ -266,6 +266,59 @@ class Database:
             
             return new_mmr
     
+    async def update_player_stats(self, user_id: int, won: bool, mmr_change: int):
+        """Update player stats after a match
+        
+        Args:
+            user_id: Discord user ID
+            won: True if player won, False if lost
+            mmr_change: MMR change (+32 for win, -27 for loss)
+        """
+        async with self.pool.acquire() as conn:
+            profile = await conn.fetchrow(
+                'SELECT wins, losses, games, streak, peak_mmr FROM player_profiles WHERE user_id = $1',
+                user_id
+            )
+            
+            if not profile:
+                return None
+            
+            # Calculate new values
+            new_wins = profile['wins'] + (1 if won else 0)
+            new_losses = profile['losses'] + (0 if won else 1)
+            new_games = profile['games'] + 1
+            
+            # Update streak
+            if won:
+                new_streak = profile['streak'] + 1 if profile['streak'] >= 0 else 1
+            else:
+                new_streak = profile['streak'] - 1 if profile['streak'] <= 0 else -1
+            
+            # Calculate winrate
+            new_winrate = (new_wins / new_games * 100) if new_games > 0 else 0.0
+            
+            # Update database
+            updated = await conn.fetchrow(
+                '''UPDATE player_profiles 
+                   SET mmr = mmr + $2,
+                       wins = $3,
+                       losses = $4,
+                       games = $5,
+                       streak = $6,
+                       winrate = $7,
+                       peak_mmr = GREATEST(peak_mmr, mmr + $2),
+                       peak_streak = CASE 
+                           WHEN $6 > peak_streak THEN $6 
+                           ELSE peak_streak 
+                       END,
+                       last_updated = CURRENT_TIMESTAMP
+                   WHERE user_id = $1
+                   RETURNING mmr, wins, losses, games, streak, winrate, peak_mmr, peak_streak''',
+                user_id, mmr_change, new_wins, new_losses, new_games, new_streak, new_winrate
+            )
+            
+            return updated
+    
     # Autoping Configuration Methods
     async def set_autoping(self, channel_id: int, role_id: int, size: int, delete_after: int):
         """Set autoping configuration for a channel"""

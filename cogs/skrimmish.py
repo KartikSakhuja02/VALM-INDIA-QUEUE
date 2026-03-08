@@ -99,9 +99,6 @@ class ReadyView(discord.ui.View):
             inline=False
         )
         
-        if self.message:
-            await self.message.edit(embed=embed, view=self)
-        
         # If both ready, proceed
         if ready_count >= 2:
             await interaction.response.defer()
@@ -109,8 +106,12 @@ class ReadyView(discord.ui.View):
             for item in self.children:
                 item.disabled = True
             
-            await self.message.edit(embed=embed, view=self)
+            if self.message:
+                await self.message.edit(embed=embed, view=self)
             await self.start_match(match_data)
+        else:
+            # First player ready - acknowledge the interaction
+            await interaction.response.edit_message(embed=embed, view=self)
     
     async def start_match(self, match_data):
         """Start the match after both players are ready"""
@@ -408,7 +409,34 @@ RED_SCORE: 8"""
             if self.message:
                 await self.message.edit(view=self)
             
-            # TODO: Update MMR, wins, losses, stats here
+            # Update player stats in database
+            if winner_registered:
+                winner_stats = await db.update_player_stats(winner_user.id, won=True, mmr_change=32)
+                if winner_stats:
+                    stats_embed = discord.Embed(
+                        title=f"📊 {winner_user.display_name}'s Stats Updated",
+                        description=f"**MMR:** {winner_stats['mmr']:,} (+32) {'🔥' if winner_stats['mmr'] == winner_stats['peak_mmr'] else ''}\n"
+                                    f"**Record:** {winner_stats['wins']}W - {winner_stats['losses']}L\n"
+                                    f"**Winrate:** {winner_stats['winrate']:.1f}%\n"
+                                    f"**Streak:** {'🔥' if winner_stats['streak'] > 0 else '❄️'} {abs(winner_stats['streak'])} {'wins' if winner_stats['streak'] > 0 else 'losses'}\n"
+                                    f"**Peak MMR:** {winner_stats['peak_mmr']:,}",
+                        color=0x00FF00
+                    )
+                    await channel.send(embed=stats_embed)
+            
+            if loser_registered:
+                loser_stats = await db.update_player_stats(loser_user.id, won=False, mmr_change=-27)
+                if loser_stats:
+                    stats_embed = discord.Embed(
+                        title=f"📊 {loser_user.display_name}'s Stats Updated",
+                        description=f"**MMR:** {loser_stats['mmr']:,} (-27)\n"
+                                    f"**Record:** {loser_stats['wins']}W - {loser_stats['losses']}L\n"
+                                    f"**Winrate:** {loser_stats['winrate']:.1f}%\n"
+                                    f"**Streak:** {'🔥' if loser_stats['streak'] > 0 else '❄️'} {abs(loser_stats['streak'])} {'wins' if loser_stats['streak'] > 0 else 'losses'}\n"
+                                    f"**Peak MMR:** {loser_stats['peak_mmr']:,}",
+                        color=0xFF0000
+                    )
+                    await channel.send(embed=stats_embed)
             
             # Clean up match channels after 30 seconds
             await asyncio.sleep(30)
