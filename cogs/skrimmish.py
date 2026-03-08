@@ -242,14 +242,11 @@ class SubmitSSView(discord.ui.View):
             )
             processing_msg = await channel.send(embed=processing_embed)
             
-            # Use Gemini for OCR - using gemini-pro-vision for image analysis
-            model = genai.GenerativeModel('gemini-pro-vision')
+            # Use Gemini 1.5 Flash for OCR (current stable model)
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
-            # Upload image to Gemini
-            image_parts = [{
-                "mime_type": attachment.content_type,
-                "data": image_data
-            }]
+            # Convert image bytes to PIL Image
+            image = Image.open(io.BytesIO(image_data))
             
             prompt = """Analyze this Valorant Mobile match scoreboard screenshot and extract the following information:
 
@@ -270,7 +267,8 @@ RED_PLAYER: MatarPaneer
 YELLOW_SCORE: 10
 RED_SCORE: 8"""
             
-            response = model.generate_content([prompt, image_parts[0]])
+            # Pass PIL Image directly to generate_content
+            response = model.generate_content([prompt, image])
             result_text = response.text
             
             # Parse the response
