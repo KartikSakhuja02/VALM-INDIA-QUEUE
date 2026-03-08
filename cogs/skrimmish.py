@@ -29,6 +29,9 @@ except ImportError as e:
 # Dictionary to track active matches
 active_matches = {}
 
+# Dictionary to track active sub requests {request_id: {data}}
+active_sub_requests = {}
+
 # Lock to prevent race condition with autoping
 autoping_lock = asyncio.Lock()
 
@@ -883,6 +886,163 @@ class VoteView(discord.ui.View):
         await logs_channel.send(embed=embed)
         print(f"✅ Sent match logs for #{match_number:04d} to logs channel")
 
+class SubRequestView(discord.ui.View):
+    """View for sub request accept/decline buttons"""
+    def __init__(self, request_id: str):
+        super().__init__(timeout=300)  # 5 minute timeout
+        self.request_id = request_id
+    
+    @discord.ui.button(label="Accept Sub", style=discord.ButtonStyle.success, custom_id="sub_accept")
+    async def accept_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Accept the sub request"""
+        if self.request_id not in active_sub_requests:
+            await interaction.response.send_message("❌ This sub request has expired.", ephemeral=True)
+            return
+        
+        request_data = active_sub_requests[self.request_id]
+        
+        # Check if the person clicking is the substitute
+        if interaction.user.id != request_data['substitute'].id:
+            await interaction.response.send_message("❌ Only the requested substitute can accept this.", ephemeral=True)
+            return
+        
+        await interaction.response.defer()
+        
+        # Update the match data
+        match_data = request_data['match_data']
+        original_player = request_data['original_player']
+        substitute = request_data['substitute']
+        text_channel = request_data['text_channel']
+        voice_channel = request_data['voice_channel']
+        
+        # Update player in match data
+        if match_data['player1'].id == original_player.id:
+            match_data['player1'] = substitute
+            match_data['team1_name'] = str(substitute.display_name)
+        else:
+            match_data['player2'] = substitute
+            match_data['team2_name'] = str(substitute.display_name)
+        
+        # Update channel permissions - give sub full access
+        await text_channel.set_permissions(substitute, read_messages=True, send_messages=True)
+        await voice_channel.set_permissions(substitute, connect=True, speak=True)
+        
+        # Remove original player from channels
+        await text_channel.set_permissions(original_player, overwrite=None)
+        await voice_channel.set_permissions(original_player, overwrite=None)
+        
+        # Update both messages
+        success_embed = discord.Embed(
+            title="✅ Sub Request Accepted",
+            description=f"{substitute.mention} has accepted the sub request!\n\n"
+                       f"**You have 3 minutes to join {voice_channel.mention}**",
+            color=0x00FF00
+        )
+        
+        # Update DM message
+        try:
+            await request_data['dm_message'].edit(embed=success_embed, view=None)
+        except:
+            pass
+        
+        # Update channel message
+        try:
+            await request_data['channel_message'].edit(embed=success_embed, view=None)
+        except:
+            pass
+        
+        # Send notification in match channel
+        await text_channel.send(
+            f"✅ {substitute.mention} has subbed in for {original_player.mention}! "
+            f"You have 3 minutes to join {voice_channel.mention}"
+        )
+        
+        # Start 3-minute timer for sub to join VC
+        await self.monitor_sub_join(match_data, substitute, text_channel, voice_channel)
+        
+        # Clean up request
+        del active_sub_requests[self.request_id]
+    
+    @discord.ui.button(label="Decline Sub", style=discord.ButtonStyle.danger, custom_id="sub_decline")
+    async def decline_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Decline the sub request"""
+        if self.request_id not in active_sub_requests:
+            await interaction.response.send_message("❌ This sub request has expired.", ephemeral=True)
+            return
+        
+        request_data = active_sub_requests[self.request_id]
+        
+        # Check if the person clicking is the substitute
+        if interaction.user.id != request_data['substitute'].id:
+            await interaction.response.send_message("❌ Only the requested substitute can decline this.", ephemeral=True)
+            return
+        
+        await interaction.response.defer()
+        
+        text_channel = request_data['text_channel']
+        substitute = request_data['substitute']
+        original_player = request_data['original_player']
+        
+        # Remove channel access
+        await text_channel.set_permissions(substitute, overwrite=None)
+        
+        # Update both messages
+        decline_embed = discord.Embed(
+            title="❌ Sub Request Declined",
+            description=f"{substitute.mention} has declined the sub request.\n\n"
+                       f"{original_player.mention} must continue with the match.",
+            color=0xFF0000
+        )
+        
+        # Update DM message
+        try:
+            await request_data['dm_message'].edit(embed=decline_embed, view=None)
+        except:
+            pass
+        
+        # Update channel message
+        try:
+            await request_data['channel_message'].edit(embed=decline_embed, view=None)
+        except:
+            pass
+        
+        # Send notification in match channel
+        await text_channel.send(
+            f"❌ {substitute.mention} declined the sub request. {original_player.mention} must continue."
+        )
+        
+        # Clean up request
+        del active_sub_requests[self.request_id]
+    
+    async def monitor_sub_join(self, match_data: dict, substitute: discord.Member, 
+                              text_channel: discord.TextChannel, voice_channel: discord.VoiceChannel):
+        """Monitor if substitute joins VC within 3 minutes"""
+        start_time = asyncio.get_event_loop().time()
+        timeout = 180  # 3 minutes
+        check_interval = 5  # Check every 5 seconds
+        
+        while True:
+            elapsed = asyncio.get_event_loop().time() - start_time
+            
+            # Refresh voice channel
+            voice_channel = text_channel.guild.get_channel(voice_channel.id)
+            if not voice_channel:
+                return
+            
+            # Check if sub is in VC
+            if substitute in voice_channel.members:
+                await text_channel.send(f"✅ {substitute.mention} has joined the voice channel!")
+                return
+            
+            # Check timeout
+            if elapsed >= timeout:
+                await text_channel.send(
+                    f"❌ {substitute.mention} failed to join within 3 minutes. Match may need to be cancelled."
+                )
+                return
+            
+            await asyncio.sleep(check_interval)
+
 class QueueButton(discord.ui.Button):
     """Button for joining the queue"""
     def __init__(self):
@@ -1686,6 +1846,108 @@ class SkrimmishCog(commands.Cog):
         # Store message reference for updates
         message = await interaction.original_response()
         view.message = message
+    
+    @app_commands.command(name="sub-request", description="Request a substitute player for your match")
+    @app_commands.describe(player="The player you want to substitute in")
+    async def sub_request(self, interaction: discord.Interaction, player: discord.Member):
+        """Request a substitute player to take your place in the match"""
+        user_id = interaction.user.id
+        
+        # Check if the player mentioning themselves
+        if player.id == user_id:
+            await interaction.response.send_message("❌ You cannot substitute yourself!", ephemeral=True)
+            return
+        
+        # Check if the substitute is a bot
+        if player.bot:
+            await interaction.response.send_message("❌ You cannot substitute a bot!", ephemeral=True)
+            return
+        
+        # Find which match the user is in
+        match_found = None
+        text_channel_id = None
+        
+        for channel_id, match_data in active_matches.items():
+            if user_id in [match_data['player1'].id, match_data['player2'].id]:
+                match_found = match_data
+                text_channel_id = channel_id
+                break
+        
+        if not match_found:
+            await interaction.response.send_message("❌ You are not in an active match!", ephemeral=True)
+            return
+        
+        # Check if they're in the match channel
+        if interaction.channel_id != text_channel_id:
+            await interaction.response.send_message("❌ You can only use this command in your match channel!", ephemeral=True)
+            return
+        
+        # Check if the substitute is already in a match
+        for channel_id, match_data in active_matches.items():
+            if player.id in [match_data['player1'].id, match_data['player2'].id]:
+                await interaction.response.send_message("❌ That player is already in an active match!", ephemeral=True)
+                return
+        
+        await interaction.response.defer()
+        
+        text_channel = match_found['text_channel']
+        voice_channel = match_found['voice_channel']
+        original_player = interaction.user
+        
+        # Give substitute access to the match channel
+        await text_channel.set_permissions(player, read_messages=True, send_messages=True)
+        
+        # Create unique request ID
+        request_id = f"{text_channel_id}_{player.id}_{int(datetime.utcnow().timestamp())}"
+        
+        # Create sub request embed
+        request_embed = discord.Embed(
+            title="🔄 Substitute Request",
+            description=f"{original_player.mention} has requested you to substitute in their match!\n\n"
+                       f"**Match:** #{match_found['match_number']:04d}\n"
+                       f"**Opponent:** {match_found['player2'].mention if match_found['player1'].id == user_id else match_found['player1'].mention}\n\n"
+                       f"Do you want to sub in?",
+            color=0x5865F2
+        )
+        request_embed.set_footer(text="You have 5 minutes to respond")
+        
+        # Create view
+        view = SubRequestView(request_id)
+        
+        # Send to DM
+        dm_message = None
+        try:
+            dm_message = await player.send(embed=request_embed, view=view)
+        except discord.Forbidden:
+            await interaction.followup.send(
+                f"❌ Could not send DM to {player.mention}. They may have DMs disabled.",
+                ephemeral=True
+            )
+            await text_channel.set_permissions(player, overwrite=None)
+            return
+        
+        # Send to channel
+        channel_message = await text_channel.send(
+            content=player.mention,
+            embed=request_embed,
+            view=view
+        )
+        
+        # Store request data
+        active_sub_requests[request_id] = {
+            'original_player': original_player,
+            'substitute': player,
+            'match_data': match_found,
+            'text_channel': text_channel,
+            'voice_channel': voice_channel,
+            'dm_message': dm_message,
+            'channel_message': channel_message
+        }
+        
+        await interaction.followup.send(
+            f"✅ Sub request sent to {player.mention}! They can accept from either DM or this channel.",
+            ephemeral=True
+        )
     
     @app_commands.command(name="ping", description="Check bot latency or ping players not in VC")
     async def ping(self, interaction: discord.Interaction):
