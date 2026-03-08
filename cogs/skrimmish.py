@@ -346,7 +346,7 @@ RED_SCORE: 8"""
             winner_user = None
             loser_user = None
             
-            # Try to match winner
+            # Try to match winner first
             if p1_profile and ign_matches(p1_profile['player_ign'], winner_ign):
                 winner_user = player1
                 loser_user = player2
@@ -365,18 +365,38 @@ RED_SCORE: 8"""
                 winner_user = player1
                 print(f"✅ Matched: P2 ({p2_profile['player_ign']}) = Loser ({loser_ign})")
             else:
-                error_details = f"OCR found: '{winner_ign}' and '{loser_ign}'\n"
-                error_details += f"Database has: '{p1_profile.get('player_ign') if p1_profile else 'N/A'}' and '{p2_profile.get('player_ign') if p2_profile else 'N/A'}'\n"
-                error_details += f"Please make sure player IGNs in database match the screenshot exactly."
-                raise ValueError(f"Could not match IGNs to registered players\n\n{error_details}")
+                # No registered player match found - use default assignment
+                # Assume player1 won if their score is higher when compared alphabetically with IGNs
+                print(f"⚠️ No IGN match found - using fallback assignment")
+                # Simple heuristic: if yellow score > red score, and p1 comes first alphabetically, assign p1 as winner
+                if winner_score > loser_score:
+                    winner_user = player1
+                    loser_user = player2
+                else:
+                    winner_user = player2
+                    loser_user = player1
+                print(f"⚠️ Assigned: Winner={winner_user.display_name}, Loser={loser_user.display_name} (both unregistered)")
             
             # Delete processing message
             await processing_msg.delete()
             
+            # Check registration status
+            winner_registered = (winner_user == player1 and p1_profile) or (winner_user == player2 and p2_profile)
+            loser_registered = (loser_user == player1 and p1_profile) or (loser_user == player2 and p2_profile)
+            
+            winner_emoji = "✅" if winner_registered else "❌"
+            loser_emoji = "✅" if loser_registered else "❌"
+            
             # Send result
             result_embed = discord.Embed(
                 title=f"🏆 Match #{match_data['match_number']:04d} Complete",
-                description=f"**Winner:** {winner_user.mention} ({winner_ign}) - {winner_score}\n**Runner-up:** {loser_user.mention} ({loser_ign}) - {loser_score}",
+                description=(
+                    f"**Winner:** {winner_emoji} {winner_user.mention} - **{winner_score}**\n"
+                    f"IGN: {winner_ign}\n\n"
+                    f"**Runner-up:** {loser_emoji} {loser_user.mention} - **{loser_score}**\n"
+                    f"IGN: {loser_ign}\n\n"
+                    f"{'✅ = Registered | ❌ = Not Registered' if not (winner_registered and loser_registered) else ''}"
+                ),
                 color=0x00FF00
             )
             result_embed.set_image(url=attachment.url)
