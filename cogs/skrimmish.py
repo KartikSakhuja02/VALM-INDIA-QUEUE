@@ -243,7 +243,7 @@ class SubmitSSView(discord.ui.View):
             processing_msg = await channel.send(embed=processing_embed)
             
             # Use Gemini for OCR
-            model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
             # Upload image to Gemini
             image_parts = [{
