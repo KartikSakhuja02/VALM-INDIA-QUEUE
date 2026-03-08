@@ -1260,14 +1260,15 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
         embed = discord.Embed(
             title="Valorant Mobile India Matchmaking MMR Leaderboard",
             description="No registered players found!",
-            color=0x5865F2
+            color=0x2B2D31
         )
         embed.timestamp = discord.utils.utcnow()
         return embed
     
     embed = discord.Embed(
         title="Valorant Mobile India Matchmaking MMR Leaderboard",
-        color=0x5865F2
+        color=0x2B2D31,
+        description=""
     )
     
     # Build description with all players in NeatQueue format
@@ -1284,7 +1285,7 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
         wins = player['wins']
         losses = player['losses']
         
-        line = f"{rank_indicator} {idx}. {player_name} ({mmr}) ({wins}-{losses})"
+        line = f"{rank_indicator} **{idx}.** {player_name} ({mmr}) ({wins}-{losses})"
         description_lines.append(line)
     
     embed.description = "\n".join(description_lines)
