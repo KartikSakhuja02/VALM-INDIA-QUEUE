@@ -438,6 +438,10 @@ RED_SCORE: 8"""
                     )
                     await channel.send(embed=stats_embed)
             
+            # Update all active leaderboards
+            if winner_registered or loser_registered:
+                await update_all_leaderboards()
+            
             # Clean up match channels after 30 seconds
             await asyncio.sleep(30)
             try:
@@ -1180,6 +1184,161 @@ class QueueView(discord.ui.View):
         ready_message = await text_channel.send(embed=ready_embed, view=ready_view)
         ready_view.message = ready_message
 
+# Dictionary to store active leaderboard messages {channel_id: {'message': message, 'page': page}}
+active_leaderboards = {}
+
+class LeaderboardView(discord.ui.View):
+    """Persistent view for leaderboard pagination"""
+    def __init__(self, channel_id: int, page: int = 1):
+        super().__init__(timeout=None)
+        self.channel_id = channel_id
+        self.page = page
+    
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary, custom_id="leaderboard_prev")
+    async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Go to previous page"""
+        if self.page > 1:
+            self.page -= 1
+            active_leaderboards[self.channel_id]['page'] = self.page
+            await self.update_leaderboard_display(interaction)
+        else:
+            await interaction.response.send_message("You're already on the first page!", ephemeral=True)
+    
+    @discord.ui.button(label="Refresh", style=discord.ButtonStyle.primary, custom_id="leaderboard_refresh", emoji="🔄")
+    async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Refresh leaderboard data"""
+        await self.update_leaderboard_display(interaction)
+    
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary, custom_id="leaderboard_next")
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Go to next page"""
+        # Calculate total pages
+        total_players = await db.get_total_players()
+        total_pages = (total_players + 9) // 10  # Ceiling division
+        
+        if self.page < total_pages:
+            self.page += 1
+            active_leaderboards[self.channel_id]['page'] = self.page
+            await self.update_leaderboard_display(interaction)
+        else:
+            await interaction.response.send_message("You're already on the last page!", ephemeral=True)
+    
+    async def update_leaderboard_display(self, interaction: discord.Interaction):
+        """Update the leaderboard embed display"""
+        await interaction.response.defer()
+        
+        # Calculate offset
+        offset = (self.page - 1) * 10
+        
+        # Get players for current page
+        players = await db.get_leaderboard_page(limit=10, offset=offset)
+        total_players = await db.get_total_players()
+        total_pages = max(1, (total_players + 9) // 10)
+        
+        if not players and self.page > 1:
+            # Page doesn't exist, go back to page 1
+            self.page = 1
+            active_leaderboards[self.channel_id]['page'] = 1
+            return await self.update_leaderboard_display(interaction)
+        
+        # Build embed
+        embed = await build_leaderboard_embed(players, self.page, total_pages, offset)
+        
+        # Update button states
+        self.previous_button.disabled = (self.page == 1)
+        self.next_button.disabled = (self.page >= total_pages)
+        
+        # Update message
+        try:
+            await interaction.message.edit(embed=embed, view=self)
+        except Exception as e:
+            print(f"Error updating leaderboard: {e}")
+
+async def build_leaderboard_embed(players, page: int, total_pages: int, offset: int):
+    """Build the leaderboard embed"""
+    if not players:
+        embed = discord.Embed(
+            title="🏆 Skrimmish Leaderboard",
+            description="No players have played any matches yet!",
+            color=0xFFD700
+        )
+        embed.set_footer(text=f"Page {page} of {total_pages}")
+        return embed
+    
+    embed = discord.Embed(
+        title="🏆 Skrimmish Leaderboard",
+        description="Ranked by MMR",
+        color=0xFFD700
+    )
+    
+    # Add players to embed
+    for idx, player in enumerate(players, start=offset + 1):
+        # Get rank emoji
+        if idx == 1:
+            rank_emoji = "🥇"
+        elif idx == 2:
+            rank_emoji = "🥈"
+        elif idx == 3:
+            rank_emoji = "🥉"
+        else:
+            rank_emoji = f"`#{idx}`"
+        
+        # Get streak emoji
+        streak = player['streak']
+        if streak > 0:
+            streak_display = f"🔥 {streak}W"
+        elif streak < 0:
+            streak_display = f"❄️ {abs(streak)}L"
+        else:
+            streak_display = "➖"
+        
+        # Format player info
+        player_name = player['discord_username'] or f"<@{player['user_id']}>"
+        ign = player['player_ign']
+        mmr = player['mmr']
+        wins = player['wins']
+        losses = player['losses']
+        winrate = player['winrate']
+        
+        embed.add_field(
+            name=f"{rank_emoji} {player_name}",
+            value=f"**IGN:** {ign}\n"
+                  f"**MMR:** {mmr:,} | **W/L:** {wins}-{losses} ({winrate:.1f}%)\n"
+                  f"**Streak:** {streak_display}",
+            inline=False
+        )
+    
+    embed.set_footer(text=f"Page {page} of {total_pages} • Auto-updates when stats change")
+    embed.timestamp = discord.utils.utcnow()
+    return embed
+
+async def update_all_leaderboards():
+    """Update all active leaderboard messages"""
+    for channel_id, data in list(active_leaderboards.items()):
+        try:
+            message = data['message']
+            page = data['page']
+            
+            # Calculate offset
+            offset = (page - 1) * 10
+            
+            # Get players for current page
+            players = await db.get_leaderboard_page(limit=10, offset=offset)
+            total_players = await db.get_total_players()
+            total_pages = max(1, (total_players + 9) // 10)
+            
+            # Build and update embed
+            embed = await build_leaderboard_embed(players, page, total_pages, offset)
+            view = LeaderboardView(channel_id, page)
+            view.previous_button.disabled = (page == 1)
+            view.next_button.disabled = (page >= total_pages)
+            
+            await message.edit(embed=embed, view=view)
+        except Exception as e:
+            print(f"Error updating leaderboard in channel {channel_id}: {e}")
+            # Remove broken leaderboard
+            del active_leaderboards[channel_id]
+
 class SkrimmishCog(commands.Cog):
     """Cog for managing 1v1 skrimmish matches"""
     
@@ -1591,6 +1750,49 @@ class SkrimmishCog(commands.Cog):
         
         embed.set_footer(text=f"Requested by {interaction.user.display_name}")
         await interaction.followup.send(embed=embed)
+    
+    @app_commands.command(name="skrimmish-leaderboard", description="Create a persistent auto-updating leaderboard in this channel")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def skrimmish_leaderboard(self, interaction: discord.Interaction):
+        """Create a persistent leaderboard that auto-updates when stats change"""
+        await interaction.response.defer()
+        
+        channel_id = interaction.channel_id
+        
+        # Check if leaderboard already exists in this channel
+        if channel_id in active_leaderboards:
+            await interaction.followup.send(
+                "⚠️ A leaderboard already exists in this channel! Delete the old message first.",
+                ephemeral=True
+            )
+            return
+        
+        # Get first page of players
+        players = await db.get_leaderboard_page(limit=10, offset=0)
+        total_players = await db.get_total_players()
+        total_pages = max(1, (total_players + 9) // 10)
+        
+        # Build embed
+        embed = await build_leaderboard_embed(players, 1, total_pages, 0)
+        
+        # Create view
+        view = LeaderboardView(channel_id, page=1)
+        view.previous_button.disabled = True
+        view.next_button.disabled = (total_pages == 1)
+        
+        # Send message
+        message = await interaction.channel.send(embed=embed, view=view)
+        
+        # Store in active leaderboards
+        active_leaderboards[channel_id] = {
+            'message': message,
+            'page': 1
+        }
+        
+        await interaction.followup.send(
+            "✅ Leaderboard created! It will automatically update when player stats change.",
+            ephemeral=True
+        )
     
     # Autoping command group
     autoping_group = app_commands.Group(name="autoping", description="Configure automatic role pings when players join queue")

@@ -340,6 +340,40 @@ class Database:
             )
             return leaderboard
     
+    async def get_leaderboard_page(self, limit: int = 10, offset: int = 0):
+        """Get a page of the leaderboard with pagination
+        
+        Args:
+            limit: Number of players per page (default 10)
+            offset: Number of players to skip (default 0)
+        
+        Returns:
+            List of player profiles ordered by MMR for the specified page
+        """
+        async with self.pool.acquire() as conn:
+            leaderboard = await conn.fetch(
+                '''SELECT user_id, discord_username, player_ign, mmr, wins, losses, 
+                          games, streak, winrate, peak_mmr, peak_streak
+                   FROM player_profiles 
+                   WHERE games > 0
+                   ORDER BY mmr DESC 
+                   LIMIT $1 OFFSET $2''',
+                limit, offset
+            )
+            return leaderboard
+    
+    async def get_total_players(self):
+        """Get the total number of players who have played at least one game
+        
+        Returns:
+            Integer count of players
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.fetchval(
+                '''SELECT COUNT(*) FROM player_profiles WHERE games > 0'''
+            )
+            return result if result else 0
+    
     # Autoping Configuration Methods
     async def set_autoping(self, channel_id: int, role_id: int, size: int, delete_after: int):
         """Set autoping configuration for a channel"""
