@@ -1789,7 +1789,7 @@ class SkrimmishCog(commands.Cog):
         await interaction.followup.send(
             f"✅ Successfully reset stats for {reset_count} players!\n"
             f"All players now have:\n"
-            f"• MMR: 1000\n"
+            f"• MMR: 700\n"
             f"• Wins: 0\n"
             f"• Losses: 0\n"
             f"• Games: 0\n"

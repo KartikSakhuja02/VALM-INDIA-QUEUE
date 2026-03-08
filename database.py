@@ -212,7 +212,7 @@ class Database:
                     '''INSERT INTO player_profiles 
                        (user_id, discord_username, player_ign, mmr, wins, losses, 
                         games, streak, peak_mmr, peak_streak, winrate)
-                       VALUES ($1, $2, $3, 0, 0, 0, 0, 0, 0, 0, 0.00)''',
+                       VALUES ($1, $2, $3, 700, 0, 0, 0, 0, 700, 0, 0.00)''',
                     user_id, discord_username, player_ign
                 )
                 return True, "Registration successful!"
@@ -374,7 +374,7 @@ class Database:
             return result if result else 0
     
     async def reset_all_player_stats(self):
-        """Reset all player stats to default values (1000 MMR, 0 wins/losses/games)
+        """Reset all player stats to default values (700 MMR, 0 wins/losses/games)
         
         Returns:
             Number of players reset
@@ -382,13 +382,13 @@ class Database:
         async with self.pool.acquire() as conn:
             result = await conn.execute(
                 '''UPDATE player_profiles
-                   SET mmr = 1000,
+                   SET mmr = 700,
                        wins = 0,
                        losses = 0,
                        games = 0,
                        streak = 0,
                        winrate = 0,
-                       peak_mmr = 1000,
+                       peak_mmr = 700,
                        peak_streak = 0,
                        last_updated = CURRENT_TIMESTAMP'''
             )
