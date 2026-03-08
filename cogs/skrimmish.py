@@ -251,7 +251,7 @@ class SubmitSSView(discord.ui.View):
             
             # Save to bytes
             img_byte_arr = io.BytesIO()
-            image.save(img_byte_arr, format='JPEG')
+            image.save(img_byte_arr, format='PNG')
             img_byte_arr = img_byte_arr.getvalue()
             image_b64 = base64.b64encode(img_byte_arr).decode('utf-8')
             
@@ -277,7 +277,7 @@ RED_SCORE: 8"""
             # Use direct REST API call to bypass deprecated SDK
             import aiohttp
             api_key = os.getenv('GEMINI_API_KEY')
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={api_key}"
             
             payload = {
                 "contents": [{
@@ -285,29 +285,7 @@ RED_SCORE: 8"""
                         {"text": prompt},
                         {
                             "inline_data": {
-                                "mime_type": "image/jpeg",
-                                "data": image_b64
-                            }
-                        }
-                    ]
-                }]
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload) as resp:
-                    if resp.status != 200:
-                        error_text = await resp.text()
-                        raise ValueError(f"API Error: {error_text}")
-                    result = await resp.json()
-            
-            result_text = result['candidates'][0]['content']['parts'][0]['text']
-            payload = {
-                "contents": [{
-                    "parts": [
-                        {"text": prompt},
-                        {
-                            "inline_data": {
-                                "mime_type": attachment.content_type or "image/jpeg",
+                                "mime_type": "image/png",
                                 "data": image_b64
                             }
                         }
