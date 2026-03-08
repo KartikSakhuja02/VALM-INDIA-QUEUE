@@ -242,8 +242,8 @@ class SubmitSSView(discord.ui.View):
             )
             processing_msg = await channel.send(embed=processing_embed)
             
-            # Use Gemini 1.5 Flash for OCR (current stable model)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            # Use gemini-pro-vision (works with old google-generativeai 0.8.x)
+            model = genai.GenerativeModel('gemini-pro-vision')
             
             # Convert image bytes to PIL Image
             image = Image.open(io.BytesIO(image_data))
@@ -267,7 +267,7 @@ RED_PLAYER: MatarPaneer
 YELLOW_SCORE: 10
 RED_SCORE: 8"""
             
-            # Pass PIL Image directly to generate_content
+            # Pass PIL Image and prompt to generate_content
             response = model.generate_content([prompt, image])
             result_text = response.text
             
