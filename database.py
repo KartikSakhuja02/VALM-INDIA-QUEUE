@@ -235,6 +235,23 @@ class Database:
             )
             return profile
     
+    async def get_player_by_ign(self, player_ign: str):
+        """Get a player's profile by their IGN (case-insensitive)
+        
+        Args:
+            player_ign: Player's in-game name
+            
+        Returns:
+            Player profile dict or None if not found
+        """
+        async with self.pool.acquire() as conn:
+            profile = await conn.fetchrow(
+                '''SELECT * FROM player_profiles 
+                   WHERE LOWER(player_ign) = LOWER($1)''',
+                player_ign
+            )
+            return profile
+    
     async def is_player_registered(self, user_id: int):
         """Check if a player is registered"""
         async with self.pool.acquire() as conn:

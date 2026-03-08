@@ -406,80 +406,73 @@ RED_SCORE: 8"""
             winner_score = max(yellow_score, red_score)
             loser_score = min(yellow_score, red_score)
             
-            # Get player profiles to match Discord users
-            player1 = match_data['player1']
-            player2 = match_data['player2']
-            
-            p1_profile = await db.get_player_profile(player1.id)
-            p2_profile = await db.get_player_profile(player2.id)
-            
-            # Debug: Print extracted IGNs and database IGNs
+            # Debug: Print extracted IGNs
             print(f"🔍 OCR extracted: Yellow='{yellow_player}' ({yellow_score}), Red='{red_player}' ({red_score})")
-            print(f"🔍 Database: P1='{p1_profile.get('player_ign') if p1_profile else None}', P2='{p2_profile.get('player_ign') if p2_profile else None}'")
             print(f"🔍 Determined: Winner='{winner_ign}' ({winner_score}), Loser='{loser_ign}' ({loser_score})")
             
-            # Match IGNs to Discord users with more flexible matching
-            def ign_matches(db_ign: str, ocr_ign: str) -> bool:
-                """Check if IGNs match (case-insensitive, whitespace-stripped)"""
-                if not db_ign or not ocr_ign:
-                    return False
-                db_clean = db_ign.lower().strip().replace(" ", "")
-                ocr_clean = ocr_ign.lower().strip().replace(" ", "")
-                return db_clean == ocr_clean or db_clean in ocr_clean or ocr_clean in db_clean
+            # Look up players in database by their IGNs
+            winner_profile = await db.get_player_by_ign(winner_ign)
+            loser_profile = await db.get_player_by_ign(loser_ign)
             
+            if not winner_profile:
+                print(f"⚠️ Winner IGN '{winner_ign}' not found in database")
+            if not loser_profile:
+                print(f"⚠️ Loser IGN '{loser_ign}' not found in database")
+            
+            # Get Discord user objects
             winner_user = None
             loser_user = None
+            winner_registered = False
+            loser_registered = False
             
-            # Try to match winner first
-            if p1_profile and ign_matches(p1_profile['player_ign'], winner_ign):
-                winner_user = player1
-                loser_user = player2
-                print(f"✅ Matched: P1 ({p1_profile['player_ign']}) = Winner ({winner_ign})")
-            elif p2_profile and ign_matches(p2_profile['player_ign'], winner_ign):
-                winner_user = player2
-                loser_user = player1
-                print(f"✅ Matched: P2 ({p2_profile['player_ign']}) = Winner ({winner_ign})")
-            # Try to match loser
-            elif p1_profile and ign_matches(p1_profile['player_ign'], loser_ign):
-                loser_user = player1
-                winner_user = player2
-                print(f"✅ Matched: P1 ({p1_profile['player_ign']}) = Loser ({loser_ign})")
-            elif p2_profile and ign_matches(p2_profile['player_ign'], loser_ign):
-                loser_user = player2
-                winner_user = player1
-                print(f"✅ Matched: P2 ({p2_profile['player_ign']}) = Loser ({loser_ign})")
-            else:
-                # No registered player match found - use default assignment
-                # Assume player1 won if their score is higher when compared alphabetically with IGNs
-                print(f"⚠️ No IGN match found - using fallback assignment")
-                # Simple heuristic: if yellow score > red score, and p1 comes first alphabetically, assign p1 as winner
-                if winner_score > loser_score:
-                    winner_user = player1
-                    loser_user = player2
+            if winner_profile:
+                winner_user = channel.guild.get_member(winner_profile['user_id'])
+                if winner_user:
+                    winner_registered = True
+                    print(f"✅ Found winner: {winner_user.display_name} (IGN: {winner_ign})")
                 else:
-                    winner_user = player2
-                    loser_user = player1
-                print(f"⚠️ Assigned: Winner={winner_user.display_name}, Loser={loser_user.display_name} (both unregistered)")
+                    print(f"⚠️ Winner user with ID {winner_profile['user_id']} not in guild")
+            
+            if loser_profile:
+                loser_user = channel.guild.get_member(loser_profile['user_id'])
+                if loser_user:
+                    loser_registered = True
+                    print(f"✅ Found loser: {loser_user.display_name} (IGN: {loser_ign})")
+                else:
+                    print(f"⚠️ Loser user with ID {loser_profile['user_id']} not in guild")
+            
+            # If either player not found, show error
+            if not winner_user or not loser_user:
+                error_msg = "❌ Could not find players in database:\\n"
+                if not winner_user:
+                    error_msg += f"• Winner IGN '{winner_ign}' "
+                    error_msg += "not registered" if not winner_profile else "not in this server"
+                    error_msg += "\\n"
+                if not loser_user:
+                    error_msg += f"• Loser IGN '{loser_ign}' "
+                    error_msg += "not registered" if not loser_profile else "not in this server"
+                    error_msg += "\\n"
+                error_msg += "\\nPlayers must be registered with `/ign` command before their stats can be updated."
+                
+                await channel.send(error_msg)
+                await processing_msg.delete()
+                # Don't continue with match completion
+                return
             
             # Delete processing message
             await processing_msg.delete()
             
-            # Check registration status
-            winner_registered = (winner_user == player1 and p1_profile) or (winner_user == player2 and p2_profile)
-            loser_registered = (loser_user == player1 and p1_profile) or (loser_user == player2 and p2_profile)
-            
-            winner_emoji = "✅" if winner_registered else "❌"
-            loser_emoji = "✅" if loser_registered else "❌"
+            winner_emoji = "✅"
+            loser_emoji = "✅"
             
             # Send result
             result_embed = discord.Embed(
                 title=f"🏆 Match #{match_data['match_number']:04d} Complete",
                 description=(
-                    f"**Winner:** {winner_emoji} {winner_user.mention} - **{winner_score}**\n"
-                    f"IGN: {winner_ign}\n\n"
-                    f"**Runner-up:** {loser_emoji} {loser_user.mention} - **{loser_score}**\n"
-                    f"IGN: {loser_ign}\n\n"
-                    f"{'✅ = Registered | ❌ = Not Registered' if not (winner_registered and loser_registered) else ''}"
+                    f"**Winner:** {winner_emoji} {winner_user.mention} - **{winner_score}**\\n"
+                    f"IGN: {winner_ign}\\n\\n"
+                    f"**Runner-up:** {loser_emoji} {loser_user.mention} - **{loser_score}**\\n"
+                    f"IGN: {loser_ign}\\n\\n"
                 ),
                 color=0x00FF00
             )
@@ -492,44 +485,41 @@ RED_SCORE: 8"""
             if self.message:
                 await self.message.edit(view=self)
             
-            # Update player stats in database
-            if winner_registered:
-                winner_stats = await db.update_player_stats(winner_user.id, won=True, mmr_change=32)
-                if winner_stats:
-                    stats_embed = discord.Embed(
-                        title=f"📊 {winner_user.display_name}'s Stats Updated",
-                        description=f"**MMR:** {winner_stats['mmr']:,} (+32) {'🔥' if winner_stats['mmr'] == winner_stats['peak_mmr'] else ''}\n"
-                                    f"**Record:** {winner_stats['wins']}W - {winner_stats['losses']}L\n"
-                                    f"**Winrate:** {winner_stats['winrate']:.1f}%\n"
-                                    f"**Streak:** {'🔥' if winner_stats['streak'] > 0 else '❄️'} {abs(winner_stats['streak'])} {'wins' if winner_stats['streak'] > 0 else 'losses'}\n"
-                                    f"**Peak MMR:** {winner_stats['peak_mmr']:,}",
-                        color=0x00FF00
-                    )
-                    await channel.send(embed=stats_embed)
-                    
-                    # Update rank role based on new MMR
-                    await update_player_rank_role(channel.guild, winner_user.id, winner_stats['mmr'])
+            # Update player stats in database (both players are registered at this point)
+            winner_stats = await db.update_player_stats(winner_user.id, won=True, mmr_change=32)
+            if winner_stats:
+                stats_embed = discord.Embed(
+                    title=f"📊 {winner_user.display_name}'s Stats Updated",
+                    description=f"**MMR:** {winner_stats['mmr']:,} (+32) {'🔥' if winner_stats['mmr'] == winner_stats['peak_mmr'] else ''}\\n"
+                                f"**Record:** {winner_stats['wins']}W - {winner_stats['losses']}L\\n"
+                                f"**Winrate:** {winner_stats['winrate']:.1f}%\\n"
+                                f"**Streak:** {'🔥' if winner_stats['streak'] > 0 else '❄️'} {abs(winner_stats['streak'])} {'wins' if winner_stats['streak'] > 0 else 'losses'}\\n"
+                                f"**Peak MMR:** {winner_stats['peak_mmr']:,}",
+                    color=0x00FF00
+                )
+                await channel.send(embed=stats_embed)
+                
+                # Update rank role based on new MMR
+                await update_player_rank_role(channel.guild, winner_user.id, winner_stats['mmr'])
             
-            if loser_registered:
-                loser_stats = await db.update_player_stats(loser_user.id, won=False, mmr_change=-27)
-                if loser_stats:
-                    stats_embed = discord.Embed(
-                        title=f"📊 {loser_user.display_name}'s Stats Updated",
-                        description=f"**MMR:** {loser_stats['mmr']:,} (-27)\n"
-                                    f"**Record:** {loser_stats['wins']}W - {loser_stats['losses']}L\n"
-                                    f"**Winrate:** {loser_stats['winrate']:.1f}%\n"
-                                    f"**Streak:** {'🔥' if loser_stats['streak'] > 0 else '❄️'} {abs(loser_stats['streak'])} {'wins' if loser_stats['streak'] > 0 else 'losses'}\n"
-                                    f"**Peak MMR:** {loser_stats['peak_mmr']:,}",
-                        color=0xFF0000
-                    )
-                    await channel.send(embed=stats_embed)
-                    
-                    # Update rank role based on new MMR
-                    await update_player_rank_role(channel.guild, loser_user.id, loser_stats['mmr'])
+            loser_stats = await db.update_player_stats(loser_user.id, won=False, mmr_change=-27)
+            if loser_stats:
+                stats_embed = discord.Embed(
+                    title=f"📊 {loser_user.display_name}'s Stats Updated",
+                    description=f"**MMR:** {loser_stats['mmr']:,} (-27)\\n"
+                                f"**Record:** {loser_stats['wins']}W - {loser_stats['losses']}L\\n"
+                                f"**Winrate:** {loser_stats['winrate']:.1f}%\\n"
+                                f"**Streak:** {'🔥' if loser_stats['streak'] > 0 else '❄️'} {abs(loser_stats['streak'])} {'wins' if loser_stats['streak'] > 0 else 'losses'}\\n"
+                                f"**Peak MMR:** {loser_stats['peak_mmr']:,}",
+                    color=0xFF0000
+                )
+                await channel.send(embed=stats_embed)
+                
+                # Update rank role based on new MMR
+                await update_player_rank_role(channel.guild, loser_user.id, loser_stats['mmr'])
             
             # Update all active leaderboards
-            if winner_registered or loser_registered:
-                await update_all_leaderboards()
+            await update_all_leaderboards()
             
             # Clean up match channels after 30 seconds
             await asyncio.sleep(30)
