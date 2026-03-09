@@ -1271,10 +1271,18 @@ class QueueView(discord.ui.View):
             color=0xED4245  # Discord red
         )
         
-        # Add queue count field
+        # Build queue display with proper spacing
+        queue_text = f"**Queue {queue_count}/2**\n\n"
+        
+        # Add player mentions if any
+        if queue:
+            players_text = ", ".join([f"<@{player['user_id']}>" for player in queue])
+            queue_text += f"{players_text}\n\n"
+        
+        # Add the queue field
         embed.add_field(
             name="",
-            value=f"**Queue {queue_count}/2**",
+            value=queue_text,
             inline=False
         )
         
@@ -1623,10 +1631,18 @@ class SkrimmishCog(commands.Cog):
                 color=0xED4245  # Discord red
             )
             
-            # Add queue count field
+            # Build queue display with proper spacing
+            queue_text = f"**Queue {queue_count}/2**\n\n"
+            
+            # Add player mentions if any
+            if queue:
+                players_text = ", ".join([f"<@{player['user_id']}>" for player in queue])
+                queue_text += f"{players_text}\n\n"
+            
+            # Add the queue field
             embed.add_field(
                 name="",
-                value=f"**Queue {queue_count}/2**",
+                value=queue_text,
                 inline=False
             )
             
@@ -1749,10 +1765,18 @@ class SkrimmishCog(commands.Cog):
             color=0xED4245  # Discord red
         )
         
-        # Add queue count field
+        # Build queue display with proper spacing
+        queue_text = f"**Queue {queue_count}/2**\n\n"
+        
+        # Add player mentions if any
+        if queue:
+            players_text = ", ".join([f"<@{player['user_id']}>" for player in queue])
+            queue_text += f"{players_text}\n\n"
+        
+        # Add the queue field
         embed.add_field(
             name="",
-            value=f"**Queue {queue_count}/2**",
+            value=queue_text,
             inline=False
         )
         
