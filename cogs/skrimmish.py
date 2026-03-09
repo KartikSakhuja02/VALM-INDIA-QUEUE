@@ -564,6 +564,39 @@ BOTTOM_SCORE: 8"""
                         result_message_id=result_message.id,
                         result_channel_id=results_channel.id
                     )
+                    
+                    # Log match result to scrimmish logs channel
+                    logs_channel_id = os.getenv('LOGS_CHANNEL_ID')
+                    if logs_channel_id:
+                        logs_channel = channel.guild.get_channel(int(logs_channel_id))
+                        if logs_channel:
+                            log_embed = discord.Embed(
+                                title=f"🏆 Match #{match_data['match_number']:04d} Complete",
+                                color=0xFFD700
+                            )
+                            log_embed.add_field(
+                                name="Winner",
+                                value=f"{winner_user.mention} ({winner_ign})\n**Score:** {winner_score}",
+                                inline=True
+                            )
+                            log_embed.add_field(
+                                name="Loser",
+                                value=f"{loser_user.mention} ({loser_ign})\n**Score:** {loser_score}",
+                                inline=True
+                            )
+                            if winner_stats and loser_stats:
+                                log_embed.add_field(
+                                    name="MMR Changes",
+                                    value=f"**{winner_user.mention}:** {winner_stats['mmr']:,} (+32)\n**{loser_user.mention}:** {loser_stats['mmr']:,} (-27)",
+                                    inline=False
+                                )
+                            log_embed.add_field(
+                                name="Result Posted",
+                                value=f"[View in {results_channel.mention}]({result_message.jump_url})",
+                                inline=False
+                            )
+                            log_embed.timestamp = datetime.utcnow()
+                            await logs_channel.send(embed=log_embed)
             
             # Update all active leaderboards
             await update_all_leaderboards()
@@ -1246,6 +1279,20 @@ class QueueButton(discord.ui.Button):
         # Update the queue display
         await self.view.update_queue_display(interaction)
         
+        # Log to scrimmish logs channel
+        logs_channel_id = os.getenv('LOGS_CHANNEL_ID')
+        if logs_channel_id:
+            logs_channel = interaction.guild.get_channel(int(logs_channel_id))
+            if logs_channel:
+                log_embed = discord.Embed(
+                    title="📥 Player Joined Queue",
+                    description=f"{interaction.user.mention} joined the queue",
+                    color=0x00FF00
+                )
+                log_embed.add_field(name="Queue Size", value=f"{len(queue)}/2", inline=True)
+                log_embed.timestamp = datetime.utcnow()
+                await logs_channel.send(embed=log_embed)
+        
         # Send autoping if configured and queue has exactly 1 player (1 in queue, 1 more needed)
         # Use a lock to prevent race condition if multiple players join simultaneously
         async with autoping_lock:
@@ -1362,6 +1409,29 @@ class QueueButton(discord.ui.Button):
             # Store initial message reference for updates
             active_matches[text_channel.id]['initial_message'] = initial_message
             
+            # Log match creation to scrimmish logs channel
+            logs_channel_id = os.getenv('LOGS_CHANNEL_ID')
+            if logs_channel_id:
+                logs_channel = guild.get_channel(int(logs_channel_id))
+                if logs_channel:
+                    log_embed = discord.Embed(
+                        title=f"🎮 Match #{match_number:04d} Created",
+                        description=f"Match channels created for {member1.mention} vs {member2.mention}",
+                        color=0x5865F2
+                    )
+                    log_embed.add_field(
+                        name="Players",
+                        value=f"**Player 1:** {member1.mention}\n**Player 2:** {member2.mention}",
+                        inline=False
+                    )
+                    log_embed.add_field(
+                        name="Channels",
+                        value=f"**Text:** {text_channel.mention}\n**Voice:** {voice_channel.mention}",
+                        inline=False
+                    )
+                    log_embed.timestamp = datetime.utcnow()
+                    await logs_channel.send(embed=log_embed)
+            
             # Increment the match number for next time
             await db.set_config('next_match_number', str(match_number + 1))
             
@@ -1398,6 +1468,21 @@ class LeaveButton(discord.ui.Button):
             await interaction.response.defer(ephemeral=True)
             # Update the queue display
             await self.view.update_queue_display(interaction)
+            
+            # Log to scrimmish logs channel
+            logs_channel_id = os.getenv('LOGS_CHANNEL_ID')
+            if logs_channel_id:
+                logs_channel = interaction.guild.get_channel(int(logs_channel_id))
+                if logs_channel:
+                    queue = await db.get_queue()
+                    log_embed = discord.Embed(
+                        title="📤 Player Left Queue",
+                        description=f"{interaction.user.mention} left the queue",
+                        color=0xFF0000
+                    )
+                    log_embed.add_field(name="Queue Size", value=f"{len(queue)}/2", inline=True)
+                    log_embed.timestamp = datetime.utcnow()
+                    await logs_channel.send(embed=log_embed)
         else:
             await interaction.response.send_message(
                 "❌ Failed to leave queue. Please try again.",
