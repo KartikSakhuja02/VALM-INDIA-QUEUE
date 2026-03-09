@@ -339,24 +339,29 @@ class SubmitSSView(discord.ui.View):
             img_byte_arr = img_byte_arr.getvalue()
             image_b64 = base64.b64encode(img_byte_arr).decode('utf-8')
             
-            prompt = """Analyze this Valorant Mobile match scoreboard screenshot and extract the following information:
+            prompt = """Analyze this Valorant Mobile match scoreboard screenshot and extract the player information.
 
-1. Find the two player IGN/usernames
-2. Find their scores (the large numbers next to each player)
-3. Identify which player has the yellow/gold background (this player corresponds to the GREEN/higher score)
-4. Identify which player has the red background (this player corresponds to the RED/lower score)
+The scoreboard has TWO players:
+- TOP player: Has a YELLOW/GREEN/GOLD colored background (displayed at the top)
+- BOTTOM player: Has a RED colored background (displayed at the bottom)
+
+For each player, find:
+1. Their IGN/username
+2. Their score (the large number shown next to their name)
+
+IMPORTANT: Report the EXACT scores as displayed. Do NOT swap or assume which score is higher.
 
 Return ONLY in this exact format:
-YELLOW_PLAYER: [player name with yellow background]
-RED_PLAYER: [player name with red background]
-YELLOW_SCORE: [score number for yellow player]
-RED_SCORE: [score number for red player]
+TOP_PLAYER: [name of player with yellow/green background at top]
+TOP_SCORE: [exact score number for top player]
+BOTTOM_PLAYER: [name of player with red background at bottom]
+BOTTOM_SCORE: [exact score number for bottom player]
 
 Example:
-YELLOW_PLAYER: aimboss
-RED_PLAYER: MatarPaneer
-YELLOW_SCORE: 10
-RED_SCORE: 8"""
+TOP_PLAYER: aimboss
+TOP_SCORE: 10
+BOTTOM_PLAYER: MatarPaneer
+BOTTOM_SCORE: 8"""
             
             # Use direct REST API call to bypass deprecated SDK
             import aiohttp
@@ -387,27 +392,27 @@ RED_SCORE: 8"""
                     result_text = result['candidates'][0]['content']['parts'][0]['text']
             
             # Parse the response
-            yellow_player_match = re.search(r'YELLOW_PLAYER:\s*(.+)', result_text, re.IGNORECASE)
-            red_player_match = re.search(r'RED_PLAYER:\s*(.+)', result_text, re.IGNORECASE)
-            yellow_score_match = re.search(r'YELLOW_SCORE:\s*(\d+)', result_text, re.IGNORECASE)
-            red_score_match = re.search(r'RED_SCORE:\s*(\d+)', result_text, re.IGNORECASE)
+            top_player_match = re.search(r'TOP_PLAYER:\s*(.+)', result_text, re.IGNORECASE)
+            top_score_match = re.search(r'TOP_SCORE:\s*(\d+)', result_text, re.IGNORECASE)
+            bottom_player_match = re.search(r'BOTTOM_PLAYER:\s*(.+)', result_text, re.IGNORECASE)
+            bottom_score_match = re.search(r'BOTTOM_SCORE:\s*(\d+)', result_text, re.IGNORECASE)
             
-            if not all([yellow_player_match, red_player_match, yellow_score_match, red_score_match]):
+            if not all([top_player_match, top_score_match, bottom_player_match, bottom_score_match]):
                 raise ValueError("Could not extract match data from screenshot")
             
-            yellow_player = yellow_player_match.group(1).strip()
-            red_player = red_player_match.group(1).strip()
-            yellow_score = int(yellow_score_match.group(1))
-            red_score = int(red_score_match.group(1))
+            top_player = top_player_match.group(1).strip()
+            top_score = int(top_score_match.group(1))
+            bottom_player = bottom_player_match.group(1).strip()
+            bottom_score = int(bottom_score_match.group(1))
             
-            # Determine winner (yellow background = green/higher score)
-            winner_ign = yellow_player if yellow_score > red_score else red_player
-            loser_ign = red_player if yellow_score > red_score else yellow_player
-            winner_score = max(yellow_score, red_score)
-            loser_score = min(yellow_score, red_score)
+            # Determine winner based on scores
+            winner_ign = top_player if top_score > bottom_score else bottom_player
+            loser_ign = bottom_player if top_score > bottom_score else top_player
+            winner_score = max(top_score, bottom_score)
+            loser_score = min(top_score, bottom_score)
             
             # Debug: Print extracted IGNs
-            print(f"🔍 OCR extracted: Yellow='{yellow_player}' ({yellow_score}), Red='{red_player}' ({red_score})")
+            print(f"🔍 OCR extracted: Top='{top_player}' ({top_score}), Bottom='{bottom_player}' ({bottom_score})")
             print(f"🔍 Determined: Winner='{winner_ign}' ({winner_score}), Loser='{loser_ign}' ({loser_score})")
             
             # Look up players in database by their IGNs
@@ -1783,6 +1788,194 @@ class SkrimmishCog(commands.Cog):
         else:
             await interaction.response.send_message(
                 f"❌ Registration failed: {message}",
+                ephemeral=True
+            )
+    
+    @app_commands.command(name="test-ocr", description="Test OCR on a Valorant Mobile scoreboard screenshot")
+    async def test_ocr(self, interaction: discord.Interaction):
+        """Test OCR functionality on a screenshot without updating stats"""
+        if not OCR_AVAILABLE:
+            await interaction.response.send_message(
+                "❌ **OCR feature is not available!**\n\n"
+                "OCR dependencies are not installed on this server.\n"
+                "Required: `pip install google-generativeai Pillow`",
+                ephemeral=True
+            )
+            return
+        
+        await interaction.response.send_message(
+            "📸 **Upload a Valorant Mobile scoreboard screenshot**\n\n"
+            "You have **2 minutes** to upload the screenshot.\n"
+            "I'll analyze it and show you what data I can extract.",
+            ephemeral=True
+        )
+        
+        # Wait for image upload
+        def check(m):
+            return (
+                m.channel.id == interaction.channel_id and
+                m.author.id == interaction.user.id and
+                len(m.attachments) > 0 and
+                m.attachments[0].content_type and
+                m.attachments[0].content_type.startswith('image/')
+            )
+        
+        try:
+            msg = await self.bot.wait_for('message', check=check, timeout=120)
+            attachment = msg.attachments[0]
+            
+            # Process the screenshot
+            await interaction.followup.send("⏳ Processing screenshot...", ephemeral=True)
+            
+            try:
+                # Download image
+                image_data = await attachment.read()
+                
+                # Convert to PIL Image
+                import io
+                from PIL import Image
+                image = Image.open(io.BytesIO(image_data))
+                
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                
+                # Convert to base64
+                img_byte_arr = io.BytesIO()
+                image.save(img_byte_arr, format='PNG')
+                img_byte_arr = img_byte_arr.getvalue()
+                image_b64 = base64.b64encode(img_byte_arr).decode('utf-8')
+                
+                # Use Gemini API
+                prompt = """Analyze this Valorant Mobile match scoreboard screenshot and extract the player information.
+
+The scoreboard has TWO players:
+- TOP player: Has a YELLOW/GREEN/GOLD colored background (displayed at the top)
+- BOTTOM player: Has a RED colored background (displayed at the bottom)
+
+For each player, find:
+1. Their IGN/username
+2. Their score (the large number shown next to their name)
+
+IMPORTANT: Report the EXACT scores as displayed. Do NOT swap or assume which score is higher.
+
+Return ONLY in this exact format:
+TOP_PLAYER: [name of player with yellow/green background at top]
+TOP_SCORE: [exact score number for top player]
+BOTTOM_PLAYER: [name of player with red background at bottom]
+BOTTOM_SCORE: [exact score number for bottom player]
+
+Example:
+TOP_PLAYER: aimboss
+TOP_SCORE: 10
+BOTTOM_PLAYER: MatarPaneer
+BOTTOM_SCORE: 8"""
+                
+                api_key = os.getenv('GEMINI_API_KEY')
+                url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={api_key}"
+                
+                payload = {
+                    "contents": [{
+                        "parts": [
+                            {"text": prompt},
+                            {
+                                "inline_data": {
+                                    "mime_type": "image/png",
+                                    "data": image_b64
+                                }
+                            }
+                        ]
+                    }]
+                }
+                
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, json=payload) as resp:
+                        if resp.status != 200:
+                            error_text = await resp.text()
+                            raise ValueError(f"API Error: {error_text}")
+                        
+                        result = await resp.json()
+                        result_text = result['candidates'][0]['content']['parts'][0]['text']
+                
+                # Parse the response
+                top_player_match = re.search(r'TOP_PLAYER:\s*(.+)', result_text, re.IGNORECASE)
+                top_score_match = re.search(r'TOP_SCORE:\s*(\d+)', result_text, re.IGNORECASE)
+                bottom_player_match = re.search(r'BOTTOM_PLAYER:\s*(.+)', result_text, re.IGNORECASE)
+                bottom_score_match = re.search(r'BOTTOM_SCORE:\s*(\d+)', result_text, re.IGNORECASE)
+                
+                if not all([top_player_match, top_score_match, bottom_player_match, bottom_score_match]):
+                    await interaction.followup.send(
+                        f"❌ **Could not parse OCR results**\n\n"
+                        f"Raw API response:\n```\n{result_text}\n```",
+                        ephemeral=True
+                    )
+                    return
+                
+                top_player = top_player_match.group(1).strip()
+                top_score = int(top_score_match.group(1))
+                bottom_player = bottom_player_match.group(1).strip()
+                bottom_score = int(bottom_score_match.group(1))
+                
+                # Determine winner
+                winner_ign = top_player if top_score > bottom_score else bottom_player
+                loser_ign = bottom_player if top_score > bottom_score else top_player
+                winner_score = max(top_score, bottom_score)
+                loser_score = min(top_score, bottom_score)
+                
+                # Show results
+                result_embed = discord.Embed(
+                    title="🔍 OCR Test Results",
+                    description=f"Successfully extracted match data from screenshot!",
+                    color=0x00FF00
+                )
+                result_embed.add_field(
+                    name="📊 Extracted Data",
+                    value=f"**Top Player (Yellow/Green):** {top_player} - {top_score}\n"
+                          f"**Bottom Player (Red):** {bottom_player} - {bottom_score}",
+                    inline=False
+                )
+                result_embed.add_field(
+                    name="🏆 Calculated Result",
+                    value=f"**Winner:** {winner_ign} ({winner_score})\n"
+                          f"**Loser:** {loser_ign} ({loser_score})",
+                    inline=False
+                )
+                result_embed.add_field(
+                    name="💡 Database Lookup",
+                    value=f"Checking if these IGNs are registered...",
+                    inline=False
+                )
+                result_embed.set_image(url=attachment.url)
+                
+                await interaction.followup.send(embed=result_embed, ephemeral=True)
+                
+                # Check database
+                winner_profile = await db.get_player_by_ign(winner_ign)
+                loser_profile = await db.get_player_by_ign(loser_ign)
+                
+                db_status = ""
+                if winner_profile:
+                    winner_user = interaction.guild.get_member(winner_profile['user_id'])
+                    db_status += f"✅ Winner '{winner_ign}' → {winner_user.mention if winner_user else 'User not in server'}\n"
+                else:
+                    db_status += f"❌ Winner '{winner_ign}' not registered\n"
+                
+                if loser_profile:
+                    loser_user = interaction.guild.get_member(loser_profile['user_id'])
+                    db_status += f"✅ Loser '{loser_ign}' → {loser_user.mention if loser_user else 'User not in server'}\n"
+                else:
+                    db_status += f"❌ Loser '{loser_ign}' not registered\n"
+                
+                await interaction.followup.send(f"**Database Status:**\n{db_status}", ephemeral=True)
+                
+            except Exception as e:
+                await interaction.followup.send(
+                    f"❌ **Error processing screenshot:**\n```\n{str(e)}\n```",
+                    ephemeral=True
+                )
+        
+        except asyncio.TimeoutError:
+            await interaction.followup.send(
+                "⏰ **Timeout!** You didn't upload a screenshot in 2 minutes.",
                 ephemeral=True
             )
     
