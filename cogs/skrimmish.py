@@ -1410,12 +1410,31 @@ class LeaderboardButton(discord.ui.Button):
         super().__init__(
             style=discord.ButtonStyle.gray,
             label="Leaderboard",
-            emoji=None
+            emoji="📊"
         )
     
     async def callback(self, interaction: discord.Interaction):
+        leaderboard_channel_id = os.getenv('LEADERBOARD_CHANNEL_ID')
+        
+        if not leaderboard_channel_id:
+            await interaction.response.send_message(
+                "⚠️ Leaderboard channel not configured. Please contact an administrator.",
+                ephemeral=True
+            )
+            return
+        
+        leaderboard_channel = interaction.guild.get_channel(int(leaderboard_channel_id))
+        
+        if not leaderboard_channel:
+            await interaction.response.send_message(
+                "❌ Leaderboard channel not found. Please contact an administrator.",
+                ephemeral=True
+            )
+            return
+        
         await interaction.response.send_message(
-            "Leaderboard feature coming soon!",
+            f"📊 **View the leaderboard here:** {leaderboard_channel.mention}\n\n"
+            f"Check out the rankings and see where you stand!",
             ephemeral=True
         )
 
