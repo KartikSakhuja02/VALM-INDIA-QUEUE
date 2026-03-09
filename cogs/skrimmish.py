@@ -1265,28 +1265,26 @@ class QueueView(discord.ui.View):
         queue = await db.get_queue()
         queue_count = len(queue)
         
-        # Create embed matching NeatQueue style with better spacing
+        # Create embed with clean NeatQueue style
         embed = discord.Embed(
-            title="Valorant Mobile India Matchmaking Queue",
-            color=0xED4245  # Discord red/NeatQueue red
+            title="VALM INDIA MATCHMAKING Queue",
+            color=0xED4245  # Discord red
         )
         
-        # Add spacing and format players nicely
-        if queue:
-            players_text = ", ".join([f"<@{player['user_id']}>" for player in queue])
-        else:
-            players_text = "*No players in queue*"
-        
-        # Add queue section with extra spacing
+        # Add queue count field
         embed.add_field(
-            name=f"\nQueue {queue_count}/2\n",
-            value=f"{players_text}\n\u200b",  # Add invisible character for spacing
+            name="",
+            value=f"**Queue {queue_count}/2**",
             inline=False
         )
         
+        # Set the banner image
+        embed.set_image(url="attachment://valm_india_banner.jpg")
+        
+        # Add timestamp at bottom
         embed.timestamp = discord.utils.utcnow()
         
-        # Update the message
+        # Update the message (without re-uploading the file)
         if self.message:
             try:
                 await self.message.edit(embed=embed)
@@ -1619,28 +1617,31 @@ class SkrimmishCog(commands.Cog):
             queue = await db.get_queue()
             queue_count = len(queue)
             
-            # Create the queue embed matching NeatQueue style
+            # Create the queue embed with NeatQueue style
             embed = discord.Embed(
-                title="Valorant Mobile India Matchmaking Queue",
-                color=0xED4245  # Discord red/NeatQueue red
+                title="VALM INDIA MATCHMAKING Queue",
+                color=0xED4245  # Discord red
             )
             
-            # Show existing queue
-            if queue:
-                players_text = ", ".join([f"<@{player['user_id']}>" for player in queue])
-            else:
-                players_text = "*No players in queue*"
-            
+            # Add queue count field
             embed.add_field(
-                name=f"\nQueue {queue_count}/2\n",
-                value=f"{players_text}\n\u200b",
+                name="",
+                value=f"**Queue {queue_count}/2**",
                 inline=False
             )
             
+            # Set the banner image
+            embed.set_image(url="attachment://valm_india_banner.jpg")
+            
+            # Add timestamp
             embed.timestamp = discord.utils.utcnow()
             
-            # Send the new message
-            message = await channel.send(embed=embed, view=self.queue_view)
+            # Load the banner image
+            banner_path = os.path.join(os.getcwd(), 'GFX', 'valm_india_banner.jpg')
+            banner_file = discord.File(banner_path, filename='valm_india_banner.jpg')
+            
+            # Send the new message with the banner
+            message = await channel.send(file=banner_file, embed=embed, view=self.queue_view)
             self.queue_view.message = message
             
             # Store the new message ID in database
@@ -1742,28 +1743,32 @@ class SkrimmishCog(commands.Cog):
             except:
                 pass
         
-        # Create the queue embed matching NeatQueue style
+        # Create the queue embed with NeatQueue style
         embed = discord.Embed(
-            title="Valorant Mobile India Matchmaking Queue",
-            color=0xED4245  # Discord red/NeatQueue red
+            title="VALM INDIA MATCHMAKING Queue",
+            color=0xED4245  # Discord red
         )
         
-        # Show existing queue
-        if queue:
-            players_text = ", ".join([f"<@{player['user_id']}>" for player in queue])
-        else:
-            players_text = "*No players in queue*"
-        
+        # Add queue count field
         embed.add_field(
-            name=f"\nQueue {queue_count}/2\n",
-            value=f"{players_text}\n\u200b",
+            name="",
+            value=f"**Queue {queue_count}/2**",
             inline=False
         )
         
+        # Set the banner image
+        embed.set_image(url="attachment://valm_india_banner.jpg")
+        
+        # Add timestamp
         embed.timestamp = discord.utils.utcnow()
         
-        # Send the message with buttons
+        # Load the banner image
+        banner_path = os.path.join(os.getcwd(), 'GFX', 'valm_india_banner.jpg')
+        banner_file = discord.File(banner_path, filename='valm_india_banner.jpg')
+        
+        # Send the message with buttons and banner
         await interaction.response.send_message(
+            file=banner_file,
             embed=embed,
             view=self.queue_view
         )
