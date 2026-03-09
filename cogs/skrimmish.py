@@ -2259,6 +2259,244 @@ BOTTOM_SCORE: 8"""
                 ephemeral=True
             )
     
+    @app_commands.command(name="test-result", description="Test the queue-results channel with a screenshot (admin only)")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def test_result(self, interaction: discord.Interaction):
+        """Test command to post a result to queue-results channel"""
+        # Check if OCR is available
+        if not OCR_AVAILABLE:
+            await interaction.response.send_message(
+                "❌ **OCR feature is not available!**\n\n"
+                "OCR dependencies are not installed on this server.\n"
+                "Required: `pip install google-generativeai Pillow`",
+                ephemeral=True
+            )
+            return
+        
+        # Check if results channel is configured
+        results_channel_id = os.getenv('QUEUE_RESULTS_CHANNEL_ID')
+        if not results_channel_id:
+            await interaction.response.send_message(
+                "❌ **QUEUE_RESULTS_CHANNEL_ID not configured!**\n\n"
+                "Please add `QUEUE_RESULTS_CHANNEL_ID=<channel_id>` to your .env file and restart the bot.",
+                ephemeral=True
+            )
+            return
+        
+        results_channel = interaction.guild.get_channel(int(results_channel_id))
+        if not results_channel:
+            await interaction.response.send_message(
+                "❌ **Queue results channel not found!**\n\n"
+                "Please check your QUEUE_RESULTS_CHANNEL_ID configuration.",
+                ephemeral=True
+            )
+            return
+        
+        await interaction.response.send_message(
+            "📸 **Please upload your screenshot now!**\n\nYou have **2 minutes** to upload the final scoreboard screenshot.\n\nJust send the image in this channel.",
+            ephemeral=True
+        )
+        
+        # Wait for image upload
+        def check(m):
+            return (
+                m.channel.id == interaction.channel_id and
+                m.author.id == interaction.user.id and
+                len(m.attachments) > 0 and
+                m.attachments[0].content_type and
+                m.attachments[0].content_type.startswith('image/')
+            )
+        
+        try:
+            msg = await self.bot.wait_for('message', check=check, timeout=120)
+            attachment = msg.attachments[0]
+            
+            # Process with OCR
+            await interaction.followup.send("⏳ Processing screenshot...", ephemeral=True)
+            
+            try:
+                # Download image
+                image_data = await attachment.read()
+                
+                # Convert to PIL Image and process
+                import io
+                from PIL import Image
+                image = Image.open(io.BytesIO(image_data))
+                
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                
+                # Convert to base64
+                img_byte_arr = io.BytesIO()
+                image.save(img_byte_arr, format='PNG')
+                img_byte_arr = img_byte_arr.getvalue()
+                image_b64 = base64.b64encode(img_byte_arr).decode('utf-8')
+                
+                prompt = """Analyze this Valorant Mobile match scoreboard screenshot and extract the player information.
+
+The scoreboard has TWO players:
+- TOP player: Has a YELLOW/GREEN/GOLD colored background (displayed at the top)
+- BOTTOM player: Has a RED colored background (displayed at the bottom)
+
+For each player, find:
+1. Their IGN/username
+2. Their score (the large number shown next to their name)
+
+IMPORTANT: Report the EXACT scores as displayed. Do NOT swap or assume which score is higher.
+
+Return ONLY in this exact format:
+TOP_PLAYER: [name of player with yellow/green background at top]
+TOP_SCORE: [exact score number for top player]
+BOTTOM_PLAYER: [name of player with red background at bottom]
+BOTTOM_SCORE: [exact score number for bottom player]
+
+Example:
+TOP_PLAYER: aimboss
+TOP_SCORE: 10
+BOTTOM_PLAYER: MatarPaneer
+BOTTOM_SCORE: 8"""
+                
+                # Call Gemini API
+                api_key = os.getenv('GEMINI_API_KEY')
+                url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={api_key}"
+                
+                payload = {
+                    "contents": [{
+                        "parts": [
+                            {"text": prompt},
+                            {
+                                "inline_data": {
+                                    "mime_type": "image/png",
+                                    "data": image_b64
+                                }
+                            }
+                        ]
+                    }]
+                }
+                
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, json=payload) as resp:
+                        if resp.status != 200:
+                            raise Exception(f"Gemini API error: {resp.status}")
+                        
+                        result = await resp.json()
+                        result_text = result['candidates'][0]['content']['parts'][0]['text']
+                
+                # Parse response
+                top_player_match = re.search(r'TOP_PLAYER:\s*(.+)', result_text, re.IGNORECASE)
+                top_score_match = re.search(r'TOP_SCORE:\s*(\d+)', result_text, re.IGNORECASE)
+                bottom_player_match = re.search(r'BOTTOM_PLAYER:\s*(.+)', result_text, re.IGNORECASE)
+                bottom_score_match = re.search(r'BOTTOM_SCORE:\s*(\d+)', result_text, re.IGNORECASE)
+                
+                if not all([top_player_match, top_score_match, bottom_player_match, bottom_score_match]):
+                    raise ValueError("Could not extract match data from screenshot")
+                
+                top_player = top_player_match.group(1).strip()
+                top_score = int(top_score_match.group(1))
+                bottom_player = bottom_player_match.group(1).strip()
+                bottom_score = int(bottom_score_match.group(1))
+                
+                # Determine winner
+                winner_ign = top_player if top_score > bottom_score else bottom_player
+                loser_ign = bottom_player if top_score > bottom_score else top_player
+                winner_score = max(top_score, bottom_score)
+                loser_score = min(top_score, bottom_score)
+                
+                # Look up in database
+                winner_profile = await db.get_player_by_ign(winner_ign)
+                loser_profile = await db.get_player_by_ign(loser_ign)
+                
+                winner_user = None
+                loser_user = None
+                winner_stats = None
+                loser_stats = None
+                
+                if winner_profile:
+                    winner_user = interaction.guild.get_member(winner_profile['user_id'])
+                    winner_stats = winner_profile
+                
+                if loser_profile:
+                    loser_user = interaction.guild.get_member(loser_profile['user_id'])
+                    loser_stats = loser_profile
+                
+                # Create test result embed
+                test_match_number = 9999
+                result_embed = discord.Embed(
+                    title=f"🏆 Winner For Queue#{test_match_number:04d} 🏆 [TEST]",
+                    color=0xFFD700
+                )
+                
+                # Winner field
+                winner_mention = winner_user.mention if winner_user else f"@{winner_ign}"
+                result_embed.add_field(
+                    name=f"**{winner_ign}**",
+                    value=f"{winner_mention} {winner_ign}\n+60.0 ({winner_score}.0)",
+                    inline=True
+                )
+                
+                # Loser field
+                loser_mention = loser_user.mention if loser_user else f"@{loser_ign}"
+                result_embed.add_field(
+                    name=f"**{loser_ign}**",
+                    value=f"{loser_mention} {loser_ign}\n-60.0 ({loser_score}.0)",
+                    inline=True
+                )
+                
+                # MMR info (if available)
+                if winner_stats and loser_stats:
+                    result_embed.add_field(
+                        name="📊 MMR Changes",
+                        value=(
+                            f"**{winner_mention}:** {winner_stats['mmr']:,} → **{winner_stats['mmr']+32:,}** (+32)\n"
+                            f"**{loser_mention}:** {loser_stats['mmr']:,} → **{loser_stats['mmr']-27:,}** (-27)"
+                        ),
+                        inline=False
+                    )
+                else:
+                    result_embed.add_field(
+                        name="📊 MMR Changes",
+                        value="*Players not registered - MMR changes not available*",
+                        inline=False
+                    )
+                
+                result_embed.set_image(url=attachment.url)
+                result_embed.timestamp = datetime.utcnow()
+                result_embed.set_footer(text="🧪 TEST RESULT - No stats affected | Vote for MVP below!")
+                
+                # Create MVP view
+                mvp_view = MVPView(
+                    f"test_{interaction.id}",
+                    winner_user.id if winner_user else 0,
+                    winner_ign,
+                    loser_user.id if loser_user else 0,
+                    loser_ign,
+                    self.bot
+                )
+                
+                # Post to results channel
+                result_message = await results_channel.send(embed=result_embed, view=mvp_view)
+                mvp_view.message = result_message
+                
+                await interaction.followup.send(
+                    f"✅ **Test result posted to {results_channel.mention}!**\n\n"
+                    f"**Winner:** {winner_ign} ({winner_score})\n"
+                    f"**Loser:** {loser_ign} ({loser_score})\n\n"
+                    f"*Note: This is a test - no stats were updated.*",
+                    ephemeral=True
+                )
+                
+            except Exception as e:
+                await interaction.followup.send(
+                    f"❌ **Error processing screenshot:**\n```\n{str(e)}\n```",
+                    ephemeral=True
+                )
+        
+        except asyncio.TimeoutError:
+            await interaction.followup.send(
+                "⏰ **Timeout!** You didn't upload a screenshot in 2 minutes.",
+                ephemeral=True
+            )
+    
     @app_commands.command(name="cancel", description="Vote to cancel the current match")
     async def cancel_match(self, interaction: discord.Interaction):
         """Initiate a vote to cancel the current match"""
