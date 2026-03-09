@@ -467,21 +467,26 @@ BOTTOM_SCORE: 8"""
             # Delete processing message
             await processing_msg.delete()
             
-            winner_emoji = "✅"
-            loser_emoji = "✅"
+            # Update player stats in database (both players are registered at this point)
+            winner_stats = await db.update_player_stats(winner_user.id, won=True, mmr_change=32)
+            loser_stats = await db.update_player_stats(loser_user.id, won=False, mmr_change=-27)
             
-            # Send result
+            # Update rank roles
+            if winner_stats:
+                await update_player_rank_role(channel.guild, winner_user.id, winner_stats['mmr'])
+            if loser_stats:
+                await update_player_rank_role(channel.guild, loser_user.id, loser_stats['mmr'])
+            
+            # Send result in match channel (simple confirmation)
             result_embed = discord.Embed(
-                title=f"🏆 Match #{match_data['match_number']:04d} Complete",
+                title=f"✅ Match #{match_data['match_number']:04d} Complete",
                 description=(
-                    f"**Winner:** {winner_emoji} {winner_user.mention} - **{winner_score}**\\n"
-                    f"IGN: {winner_ign}\\n\\n"
-                    f"**Runner-up:** {loser_emoji} {loser_user.mention} - **{loser_score}**\\n"
-                    f"IGN: {loser_ign}\\n\\n"
+                    f"**Winner:** {winner_user.mention} - **{winner_score}**\\n"
+                    f"**Runner-up:** {loser_user.mention} - **{loser_score}**\\n\\n"
+                    f"Results posted to queue-results channel!"
                 ),
                 color=0x00FF00
             )
-            result_embed.set_image(url=attachment.url)
             await channel.send(embed=result_embed)
             
             # Disable submit button
@@ -490,38 +495,75 @@ BOTTOM_SCORE: 8"""
             if self.message:
                 await self.message.edit(view=self)
             
-            # Update player stats in database (both players are registered at this point)
-            winner_stats = await db.update_player_stats(winner_user.id, won=True, mmr_change=32)
-            if winner_stats:
-                stats_embed = discord.Embed(
-                    title=f"📊 {winner_user.display_name}'s Stats Updated",
-                    description=f"**MMR:** {winner_stats['mmr']:,} (+32) {'🔥' if winner_stats['mmr'] == winner_stats['peak_mmr'] else ''}\\n"
-                                f"**Record:** {winner_stats['wins']}W - {winner_stats['losses']}L\\n"
-                                f"**Winrate:** {winner_stats['winrate']:.1f}%\\n"
-                                f"**Streak:** {'🔥' if winner_stats['streak'] > 0 else '❄️'} {abs(winner_stats['streak'])} {'wins' if winner_stats['streak'] > 0 else 'losses'}\\n"
-                                f"**Peak MMR:** {winner_stats['peak_mmr']:,}",
-                    color=0x00FF00
-                )
-                await channel.send(embed=stats_embed)
-                
-                # Update rank role based on new MMR
-                await update_player_rank_role(channel.guild, winner_user.id, winner_stats['mmr'])
-            
-            loser_stats = await db.update_player_stats(loser_user.id, won=False, mmr_change=-27)
-            if loser_stats:
-                stats_embed = discord.Embed(
-                    title=f"📊 {loser_user.display_name}'s Stats Updated",
-                    description=f"**MMR:** {loser_stats['mmr']:,} (-27)\\n"
-                                f"**Record:** {loser_stats['wins']}W - {loser_stats['losses']}L\\n"
-                                f"**Winrate:** {loser_stats['winrate']:.1f}%\\n"
-                                f"**Streak:** {'🔥' if loser_stats['streak'] > 0 else '❄️'} {abs(loser_stats['streak'])} {'wins' if loser_stats['streak'] > 0 else 'losses'}\\n"
-                                f"**Peak MMR:** {loser_stats['peak_mmr']:,}",
-                    color=0xFF0000
-                )
-                await channel.send(embed=stats_embed)
-                
-                # Update rank role based on new MMR
-                await update_player_rank_role(channel.guild, loser_user.id, loser_stats['mmr'])
+            # POST TO QUEUE-RESULTS CHANNEL
+            results_channel_id = os.getenv('QUEUE_RESULTS_CHANNEL_ID')
+            if results_channel_id:
+                results_channel = channel.guild.get_channel(int(results_channel_id))
+                if results_channel:
+                    # Create detailed result embed for queue-results channel
+                    result_embed = discord.Embed(
+                        title=f"🏆 Winner For Queue#{match_data['match_number']:04d} 🏆",
+                        color=0xFFD700  # Gold color
+                    )
+                    
+                    # Add winner info with IGN
+                    result_embed.add_field(
+                        name=f"**{winner_ign}**",
+                        value=f"{winner_user.mention} {winner_ign}\n+60.0 ({winner_score}.0)",
+                        inline=True
+                    )
+                    
+                    # Add loser info with IGN  
+                    result_embed.add_field(
+                        name=f"**{loser_ign}**",
+                        value=f"{loser_user.mention} {loser_ign}\n-60.0 ({loser_score}.0)",
+                        inline=True
+                    )
+                    
+                    # Add MMR information
+                    if winner_stats and loser_stats:
+                        result_embed.add_field(
+                            name="📊 MMR Changes",
+                            value=(
+                                f"**{winner_user.mention}:** {winner_stats['mmr']-32:,} → **{winner_stats['mmr']:,}** (+32)\\n"
+                                f"**{loser_user.mention}:** {loser_stats['mmr']+27:,} → **{loser_stats['mmr']:,}** (-27)"
+                            ),
+                            inline=False
+                        )
+                    
+                    # Add screenshot
+                    result_embed.set_image(url=attachment.url)
+                    
+                    # Add timestamp
+                    result_embed.timestamp = datetime.utcnow()
+                    result_embed.set_footer(text="Vote for the MVP below! 🏆")
+                    
+                    # Create MVP voting view
+                    mvp_view = MVPView(
+                        str(self.match_id),
+                        winner_user.id,
+                        winner_user.display_name,
+                        loser_user.id,
+                        loser_user.display_name,
+                        self.view.bot
+                    )
+                    
+                    # Send result message
+                    result_message = await results_channel.send(embed=result_embed, view=mvp_view)
+                    mvp_view.message = result_message
+                    
+                    # Save match result to database
+                    await db.save_match_result(
+                        match_id=str(self.match_id),
+                        match_number=match_data['match_number'],
+                        winner_id=winner_user.id,
+                        loser_id=loser_user.id,
+                        winner_score=winner_score,
+                        loser_score=loser_score,
+                        screenshot_url=attachment.url,
+                        result_message_id=result_message.id,
+                        result_channel_id=results_channel.id
+                    )
             
             # Update all active leaderboards
             await update_all_leaderboards()
@@ -692,6 +734,133 @@ class CancelView(discord.ui.View):
     async def on_timeout(self):
         """Called when the 60 second timeout occurs"""
         await self.finalize_decision(early=False)
+
+class MVPButton(discord.ui.Button):
+    """Button for voting MVP"""
+    def __init__(self, user_id: int, display_name: str):
+        super().__init__(
+            style=discord.ButtonStyle.primary,
+            label=f"Vote {display_name}",
+            emoji="🏆",
+            custom_id=f"mvp_{user_id}"
+        )
+        self.voted_user_id = user_id
+    
+    async def callback(self, interaction: discord.Interaction):
+        match_id = self.view.match_id
+        voter_id = interaction.user.id
+        
+        # Record the vote in database
+        vote_recorded = await db.add_mvp_vote(match_id, voter_id, self.voted_user_id)
+        
+        if not vote_recorded:
+            await interaction.response.send_message(
+                "✅ You've already voted in this match!",
+                ephemeral=True
+            )
+            return
+        
+        # Update the display
+        await self.view.update_vote_display(interaction)
+        
+        # Check if we should finalize (5+ votes or timeout)
+        total_votes = await db.get_total_mvp_votes(match_id)
+        if total_votes >= 5:
+            await self.view.finalize_mvp()
+
+class MVPView(discord.ui.View):
+    """View for MVP voting"""
+    def __init__(self, match_id: str, player1_id: int, player1_name: str, 
+                 player2_id: int, player2_name: str, bot):
+        super().__init__(timeout=300)  # 5 minutes timeout
+        self.match_id = match_id
+        self.player1_id = player1_id
+        self.player2_id = player2_id
+        self.bot = bot
+        self.message: Optional[discord.Message] = None
+        self.finalized = False
+        
+        # Add voting buttons for both players
+        self.add_item(MVPButton(player1_id, player1_name))
+        self.add_item(MVPButton(player2_id, player2_name))
+    
+    async def update_vote_display(self, interaction: discord.Interaction):
+        """Update the vote counts in real-time"""
+        if self.finalized:
+            return
+        
+        # Get current vote counts
+        vote_counts = await db.get_mvp_votes(self.match_id)
+        p1_votes = vote_counts.get(self.player1_id, 0)
+        p2_votes = vote_counts.get(self.player2_id, 0)
+        total_votes = p1_votes + p2_votes
+        
+        # Update button labels with vote counts
+        for item in self.children:
+            if isinstance(item, MVPButton):
+                votes = vote_counts.get(item.voted_user_id, 0)
+                player_name = interaction.guild.get_member(item.voted_user_id).display_name
+                item.label = f"{player_name} ({votes} votes)"
+        
+        embed = self.message.embeds[0]
+        embed.set_footer(text=f"🗳️ {total_votes} total votes • Voting ends in 5 minutes")
+        
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    async def finalize_mvp(self):
+        """Finalize MVP voting and declare winner"""
+        if self.finalized:
+            return
+        
+        self.finalized = True
+        
+        # Get final vote counts
+        vote_counts = await db.get_mvp_votes(self.match_id)
+        p1_votes = vote_counts.get(self.player1_id, 0)
+        p2_votes = vote_counts.get(self.player2_id, 0)
+        total_votes = p1_votes + p2_votes
+        
+        # Determine MVP based on votes
+        if p1_votes > p2_votes:
+            mvp_id = self.player1_id
+            mvp_votes = p1_votes
+        elif p2_votes > p1_votes:
+            mvp_id = self.player2_id
+            mvp_votes = p2_votes
+        else:
+            # Tie or no votes - no MVP
+            if self.message:
+                embed = self.message.embeds[0]
+                embed.set_footer(text="⚖️ Voting ended in a tie - No MVP awarded")
+                for item in self.children:
+                    item.disabled = True
+                await self.message.edit(embed=embed, view=self)
+            return
+        
+        # Update database
+        await db.update_player_mvp(mvp_id)
+        await db.finalize_mvp(self.match_id, mvp_id, total_votes)
+        
+        # Update message with MVP winner
+        if self.message:
+            mvp_user = self.message.guild.get_member(mvp_id)
+            embed = self.message.embeds[0]
+            embed.add_field(
+                name="🏆 Match MVP",
+                value=f"{mvp_user.mention} with **{mvp_votes}** votes!",
+                inline=False
+            )
+            embed.set_footer(text=f"✅ MVP Voting Complete • {total_votes} total votes")
+            
+            # Disable all buttons
+            for item in self.children:
+                item.disabled = True
+            
+            await self.message.edit(embed=embed, view=self)
+    
+    async def on_timeout(self):
+        """Called when 5 minute timeout occurs"""
+        await self.finalize_mvp()
 
 class VoteButton(discord.ui.Button):
     """Button for voting on match winner"""
@@ -1534,12 +1703,14 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
         # Get player name
         player_name = player['player_ign'] or player['discord_username'] or f"User{player['user_id']}"
         
-        # Format: ▲ rank. name (MMR) (W-L) - exactly like NeatQueue
+        # Format: ▲ rank. name (MMR) (W-L) | 🏆 MVP - with MVP count
         mmr = player['mmr']
         wins = player['wins']
         losses = player['losses']
+        mvp_count = player.get('mvp_count', 0)
         
-        line = f"{rank_indicator} **{idx}.** {player_name} ({mmr}) ({wins}-{losses})"
+        mvp_display = f" | 🏆 {mvp_count}" if mvp_count > 0 else ""
+        line = f"{rank_indicator} **{idx}.** {player_name} ({mmr}) ({wins}-{losses}){mvp_display}"
         description_lines.append(line)
     
     embed.description = "\n".join(description_lines)
@@ -2368,11 +2539,14 @@ BOTTOM_SCORE: 8"""
             wins = player['wins']
             losses = player['losses']
             winrate = player['winrate']
+            mvp_count = player.get('mvp_count', 0)
+            
+            mvp_display = f" | **MVPs:** 🏆 {mvp_count}" if mvp_count > 0 else ""
             
             embed.add_field(
                 name=f"{rank_emoji} {player_name}",
                 value=f"**IGN:** {ign}\n"
-                      f"**MMR:** {mmr:,} | **W/L:** {wins}-{losses} ({winrate:.1f}%)\n"
+                      f"**MMR:** {mmr:,} | **W/L:** {wins}-{losses} ({winrate:.1f}%){mvp_display}\n"
                       f"**Streak:** {streak_display}",
                 inline=False
             )

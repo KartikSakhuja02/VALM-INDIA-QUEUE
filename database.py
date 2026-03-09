@@ -92,10 +92,20 @@ class Database:
                     peak_mmr INTEGER DEFAULT 0,
                     peak_streak INTEGER DEFAULT 0,
                     winrate DECIMAL(5,2) DEFAULT 0.00,
+                    mvp_count INTEGER DEFAULT 0,
                     registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            
+            # Add mvp_count column if it doesn't exist (migration)
+            try:
+                await conn.execute('''
+                    ALTER TABLE player_profiles 
+                    ADD COLUMN IF NOT EXISTS mvp_count INTEGER DEFAULT 0
+                ''')
+            except:
+                pass
             
             # Create autoping_config table
             await conn.execute('''
@@ -116,6 +126,36 @@ class Database:
                     current_page INTEGER DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create match_results table for tracking completed matches
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS match_results (
+                    match_id VARCHAR(100) PRIMARY KEY,
+                    match_number INTEGER NOT NULL,
+                    winner_id BIGINT NOT NULL,
+                    loser_id BIGINT NOT NULL,
+                    winner_score INTEGER NOT NULL,
+                    loser_score INTEGER NOT NULL,
+                    screenshot_url TEXT,
+                    result_message_id BIGINT,
+                    result_channel_id BIGINT,
+                    mvp_user_id BIGINT,
+                    mvp_votes INTEGER DEFAULT 0,
+                    completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create mvp_votes table for tracking individual votes
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS mvp_votes (
+                    id SERIAL PRIMARY KEY,
+                    match_id VARCHAR(100) NOT NULL,
+                    voter_id BIGINT NOT NULL,
+                    voted_for BIGINT NOT NULL,
+                    voted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(match_id, voter_id)
                 )
             ''')
             
@@ -478,6 +518,86 @@ class Database:
             await conn.execute(
                 'DELETE FROM persistent_leaderboards WHERE channel_id = $1',
                 channel_id
+            )
+    
+    # Match Results and MVP Methods
+    async def save_match_result(self, match_id: str, match_number: int, winner_id: int, 
+                                loser_id: int, winner_score: int, loser_score: int, 
+                                screenshot_url: str, result_message_id: int = None, 
+                                result_channel_id: int = None):
+        """Save a completed match result"""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                '''INSERT INTO match_results 
+                   (match_id, match_number, winner_id, loser_id, winner_score, loser_score, 
+                    screenshot_url, result_message_id, result_channel_id, completed_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
+                   ON CONFLICT (match_id) 
+                   DO UPDATE SET result_message_id = $8, result_channel_id = $9''',
+                match_id, match_number, winner_id, loser_id, winner_score, loser_score, 
+                screenshot_url, result_message_id, result_channel_id
+            )
+    
+    async def add_mvp_vote(self, match_id: str, voter_id: int, voted_for: int):
+        """Record an MVP vote for a match
+        
+        Returns:
+            True if vote was recorded, False if user already voted
+        """
+        async with self.pool.acquire() as conn:
+            try:
+                await conn.execute(
+                    '''INSERT INTO mvp_votes (match_id, voter_id, voted_for, voted_at)
+                       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)''',
+                    match_id, voter_id, voted_for
+                )
+                return True
+            except asyncpg.UniqueViolationError:
+                return False
+    
+    async def get_mvp_votes(self, match_id: str):
+        """Get MVP vote counts for a match
+        
+        Returns:
+            Dict with user_id -> vote_count mapping
+        """
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                '''SELECT voted_for, COUNT(*) as vote_count 
+                   FROM mvp_votes 
+                   WHERE match_id = $1 
+                   GROUP BY voted_for''',
+                match_id
+            )
+            return {row['voted_for']: row['vote_count'] for row in rows}
+    
+    async def get_total_mvp_votes(self, match_id: str):
+        """Get total number of votes for a match"""
+        async with self.pool.acquire() as conn:
+            result = await conn.fetchval(
+                'SELECT COUNT(*) FROM mvp_votes WHERE match_id = $1',
+                match_id
+            )
+            return result if result else 0
+    
+    async def update_player_mvp(self, user_id: int):
+        """Increment a player's MVP count"""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                '''UPDATE player_profiles 
+                   SET mvp_count = mvp_count + 1, last_updated = CURRENT_TIMESTAMP
+                   WHERE user_id = $1''',
+                user_id
+            )
+    
+    async def finalize_mvp(self, match_id: str, mvp_user_id: int, total_votes: int):
+        """Mark the MVP winner for a match"""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                '''UPDATE match_results 
+                   SET mvp_user_id = $2, mvp_votes = $3 
+                   WHERE match_id = $1''',
+                match_id, mvp_user_id, total_votes
             )
 
 # Global database instance
