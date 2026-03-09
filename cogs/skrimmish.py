@@ -32,6 +32,9 @@ active_matches = {}
 # Dictionary to track active sub requests {request_id: {data}}
 active_sub_requests = {}
 
+# Dictionary to track queue inactivity timers {channel_id: asyncio.Task}
+queue_inactivity_timers = {}
+
 # Lock to prevent race condition with autoping
 autoping_lock = asyncio.Lock()
 
@@ -1293,6 +1296,10 @@ class QueueButton(discord.ui.Button):
                 log_embed.timestamp = datetime.utcnow()
                 await logs_channel.send(embed=log_embed)
         
+        # Start inactivity timer if this is the first player
+        if len(queue) == 1:
+            await self.view.start_inactivity_timer(interaction.channel_id, interaction.guild)
+        
         # Send autoping if configured and queue has exactly 1 player (1 in queue, 1 more needed)
         # Use a lock to prevent race condition if multiple players join simultaneously
         async with autoping_lock:
@@ -1321,6 +1328,9 @@ class QueueButton(discord.ui.Button):
         
         # Check if we have 2 players (match ready)
         if len(queue) >= 2:
+            # Cancel inactivity timer since match is starting
+            await self.view.cancel_inactivity_timer(interaction.channel_id)
+            
             # Create match with first 2 players
             player1 = queue[0]
             player2 = queue[1]
@@ -1469,12 +1479,18 @@ class LeaveButton(discord.ui.Button):
             # Update the queue display
             await self.view.update_queue_display(interaction)
             
+            # Get updated queue
+            queue = await db.get_queue()
+            
+            # Cancel inactivity timer if queue is now empty
+            if len(queue) == 0:
+                await self.view.cancel_inactivity_timer(interaction.channel_id)
+            
             # Log to scrimmish logs channel
             logs_channel_id = os.getenv('LOGS_CHANNEL_ID')
             if logs_channel_id:
                 logs_channel = interaction.guild.get_channel(int(logs_channel_id))
                 if logs_channel:
-                    queue = await db.get_queue()
                     log_embed = discord.Embed(
                         title="📤 Player Left Queue",
                         description=f"{interaction.user.mention} left the queue",
@@ -1532,6 +1548,73 @@ class QueueView(discord.ui.View):
         self.add_item(LeaderboardButton())
         self.message: Optional[discord.Message] = None
         self.bot = bot
+    
+    async def start_inactivity_timer(self, channel_id: int, guild: discord.Guild):
+        """Start 60-minute inactivity timer for queue"""
+        # Cancel existing timer if any
+        await self.cancel_inactivity_timer(channel_id)
+        
+        async def inactivity_timeout():
+            try:
+                await asyncio.sleep(3600)  # 60 minutes
+                
+                # Clear the queue
+                queue = await db.get_queue()
+                for player in queue:
+                    await db.remove_from_queue(player['user_id'])
+                
+                # Update queue display with inactivity message
+                channel = guild.get_channel(channel_id)
+                if channel and self.message:
+                    embed = discord.Embed(
+                        title="VALM INDIA MATCHMAKING Queue",
+                        description="⏰ **Queue cleared due to inactivity of 60 minutes**\n\nNo second player joined. Please join again to start a new queue.",
+                        color=0xFF6B6B  # Light red
+                    )
+                    embed.add_field(
+                        name="",
+                        value="**Queue 0/2**\n\n",
+                        inline=False
+                    )
+                    embed.set_image(url="attachment://valm_india_banner.jpg")
+                    embed.timestamp = discord.utils.utcnow()
+                    
+                    try:
+                        await self.message.edit(embed=embed)
+                    except:
+                        pass
+                    
+                    # Log to scrimmish logs channel
+                    logs_channel_id = os.getenv('LOGS_CHANNEL_ID')
+                    if logs_channel_id:
+                        logs_channel = guild.get_channel(int(logs_channel_id))
+                        if logs_channel:
+                            log_embed = discord.Embed(
+                                title="⏰ Queue Cleared - Inactivity",
+                                description="Queue was cleared due to 60 minutes of inactivity",
+                                color=0xFF6B6B
+                            )
+                            log_embed.timestamp = datetime.utcnow()
+                            await logs_channel.send(embed=log_embed)
+                
+                # Clean up timer reference
+                if channel_id in queue_inactivity_timers:
+                    del queue_inactivity_timers[channel_id]
+                    
+            except asyncio.CancelledError:
+                # Timer was cancelled (player left or second player joined)
+                pass
+        
+        # Create and store the timer task
+        timer_task = asyncio.create_task(inactivity_timeout())
+        queue_inactivity_timers[channel_id] = timer_task
+    
+    async def cancel_inactivity_timer(self, channel_id: int):
+        """Cancel the inactivity timer for a channel"""
+        if channel_id in queue_inactivity_timers:
+            timer_task = queue_inactivity_timers[channel_id]
+            timer_task.cancel()
+            del queue_inactivity_timers[channel_id]
     
     async def update_queue_display(self, interaction: discord.Interaction):
         """Update the queue embed display"""
@@ -1938,6 +2021,11 @@ class SkrimmishCog(commands.Cog):
             # Store the new message ID in database
             await db.set_config('queue_message_id', str(message.id))
             await db.set_config('queue_channel_id', str(self.queue_channel_id))
+            
+            # Start inactivity timer if there's exactly 1 player waiting
+            if queue_count == 1:
+                await self.queue_view.start_inactivity_timer(channel.id, channel.guild)
+                print(f"⏰ Started inactivity timer for existing queue")
             
             print(f"✅ Queue UI setup in channel {channel.name} (ID: {self.queue_channel_id})")
             
