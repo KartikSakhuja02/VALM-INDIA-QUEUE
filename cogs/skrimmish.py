@@ -1441,6 +1441,9 @@ class LeaderboardView(discord.ui.View):
         if self.page > 1:
             self.page -= 1
             active_leaderboards[self.channel_id]['page'] = self.page
+            # Save page to database
+            message = active_leaderboards[self.channel_id]['message']
+            await db.save_leaderboard(self.channel_id, message.id, self.page)
             await self.update_leaderboard_display(interaction)
         else:
             await interaction.response.send_message("You're already on the first page!", ephemeral=True)
@@ -1460,6 +1463,9 @@ class LeaderboardView(discord.ui.View):
         if self.page < total_pages:
             self.page += 1
             active_leaderboards[self.channel_id]['page'] = self.page
+            # Save page to database
+            message = active_leaderboards[self.channel_id]['message']
+            await db.save_leaderboard(self.channel_id, message.id, self.page)
             await self.update_leaderboard_display(interaction)
         else:
             await interaction.response.send_message("You're already on the last page!", ephemeral=True)
@@ -1557,10 +1563,16 @@ async def update_all_leaderboards():
             view.next_button.disabled = (page >= total_pages)
             
             await message.edit(embed=embed, view=view)
+        except discord.NotFound:
+            print(f"Leaderboard message in channel {channel_id} was deleted, removing from tracking")
+            # Remove from memory and database
+            del active_leaderboards[channel_id]
+            await db.delete_leaderboard(channel_id)
         except Exception as e:
             print(f"Error updating leaderboard in channel {channel_id}: {e}")
-            # Remove broken leaderboard
+            # Remove broken leaderboard from memory and database
             del active_leaderboards[channel_id]
+            await db.delete_leaderboard(channel_id)
 
 class SkrimmishCog(commands.Cog):
     """Cog for managing 1v1 skrimmish matches"""
@@ -1576,6 +1588,7 @@ class SkrimmishCog(commands.Cog):
         """Called when the bot is ready - setup queue UI automatically"""
         if not self.setup_done and self.queue_channel_id:
             await self.setup_queue_on_startup()
+            await self.load_persistent_leaderboards()
             self.setup_done = True
     
     async def setup_queue_on_startup(self):
@@ -1638,6 +1651,73 @@ class SkrimmishCog(commands.Cog):
             
         except Exception as e:
             print(f"❌ Failed to setup queue on startup: {e}")
+    
+    async def load_persistent_leaderboards(self):
+        """Load all persistent leaderboards from database on bot startup"""
+        try:
+            # Wait a moment for bot to be fully ready
+            await asyncio.sleep(1)
+            
+            # Get all leaderboards from database
+            leaderboards = await db.get_all_leaderboards()
+            
+            if not leaderboards:
+                print("ℹ️ No persistent leaderboards found")
+                return
+            
+            loaded_count = 0
+            for lb_data in leaderboards:
+                try:
+                    channel_id = lb_data['channel_id']
+                    message_id = lb_data['message_id']
+                    page = lb_data['page']
+                    
+                    # Get the channel
+                    channel = self.bot.get_channel(channel_id)
+                    if not channel:
+                        print(f"⚠️ Leaderboard channel {channel_id} not found, removing from database")
+                        await db.delete_leaderboard(channel_id)
+                        continue
+                    
+                    # Fetch the message
+                    try:
+                        message = await channel.fetch_message(message_id)
+                    except discord.NotFound:
+                        print(f"⚠️ Leaderboard message {message_id} not found in channel {channel.name}, removing from database")
+                        await db.delete_leaderboard(channel_id)
+                        continue
+                    
+                    # Store in active leaderboards
+                    active_leaderboards[channel_id] = {
+                        'message': message,
+                        'page': page
+                    }
+                    
+                    # Update the leaderboard with fresh data
+                    offset = (page - 1) * 10
+                    players = await db.get_leaderboard_page(limit=10, offset=offset)
+                    total_players = await db.get_total_players()
+                    total_pages = max(1, (total_players + 9) // 10)
+                    
+                    embed = await build_leaderboard_embed(players, page, total_pages, offset)
+                    view = LeaderboardView(channel_id, page)
+                    view.previous_button.disabled = (page == 1)
+                    view.next_button.disabled = (page >= total_pages)
+                    
+                    await message.edit(embed=embed, view=view)
+                    
+                    loaded_count += 1
+                    print(f"✅ Loaded leaderboard in channel {channel.name} (page {page})")
+                    
+                except Exception as e:
+                    print(f"❌ Error loading leaderboard for channel {channel_id}: {e}")
+                    await db.delete_leaderboard(channel_id)
+            
+            if loaded_count > 0:
+                print(f"✅ Successfully loaded {loaded_count} persistent leaderboard(s)")
+        
+        except Exception as e:
+            print(f"❌ Failed to load persistent leaderboards: {e}")
     
     @app_commands.command(name="setup_queue", description="Setup the skrimmish queue in this channel")
     @app_commands.checks.has_permissions(administrator=True)
@@ -2308,6 +2388,9 @@ BOTTOM_SCORE: 8"""
             'message': message,
             'page': 1
         }
+        
+        # Save to database for persistence
+        await db.save_leaderboard(channel_id, message.id, 1)
         
         await interaction.followup.send(
             "✅ Leaderboard created! It will automatically update when player stats change.",

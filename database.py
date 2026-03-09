@@ -108,6 +108,17 @@ class Database:
                 )
             ''')
             
+            # Create persistent_leaderboards table
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS persistent_leaderboards (
+                    channel_id BIGINT PRIMARY KEY,
+                    message_id BIGINT NOT NULL,
+                    current_page INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
             print("✅ Database schema initialized")
     
     # Bot Config Methods
@@ -438,6 +449,34 @@ class Database:
         async with self.pool.acquire() as conn:
             await conn.execute(
                 'DELETE FROM autoping_config WHERE channel_id = $1',
+                channel_id
+            )
+    
+    # Persistent Leaderboard Methods
+    async def save_leaderboard(self, channel_id: int, message_id: int, page: int = 1):
+        """Save or update a persistent leaderboard"""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                '''INSERT INTO persistent_leaderboards (channel_id, message_id, current_page, last_updated)
+                   VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+                   ON CONFLICT (channel_id)
+                   DO UPDATE SET message_id = $2, current_page = $3, last_updated = CURRENT_TIMESTAMP''',
+                channel_id, message_id, page
+            )
+    
+    async def get_all_leaderboards(self):
+        """Get all persistent leaderboards"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                'SELECT channel_id, message_id, current_page FROM persistent_leaderboards'
+            )
+            return [{'channel_id': row['channel_id'], 'message_id': row['message_id'], 'page': row['current_page']} for row in rows]
+    
+    async def delete_leaderboard(self, channel_id: int):
+        """Delete a persistent leaderboard"""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                'DELETE FROM persistent_leaderboards WHERE channel_id = $1',
                 channel_id
             )
 
