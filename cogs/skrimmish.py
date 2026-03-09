@@ -1502,81 +1502,43 @@ class LeaderboardView(discord.ui.View):
             print(f"Error updating leaderboard: {e}")
 
 async def build_leaderboard_embed(players, page: int, total_pages: int, offset: int):
-    """Build the leaderboard embed - Aesthetic minimalist design"""
+    """Build the leaderboard embed - NeatQueue style"""
     if not players:
         embed = discord.Embed(
-            title="",
-            description="```\n╔══════════════════════════════════════╗\n║     MATCHMAKING LEADERBOARD          ║\n║                                      ║\n║      No registered players           ║\n╚══════════════════════════════════════╝\n```",
-            color=0x1a1a1a
+            title="Valorant Mobile India Matchmaking MMR Leaderboard",
+            description="No registered players found!",
+            color=0x2B2D31
         )
-        embed.set_footer(text=f"Page {page}/{total_pages}")
+        embed.set_footer(text=f"Page {page} • Updated at")
         embed.timestamp = discord.utils.utcnow()
         return embed
     
-    # Header with clean box design
-    header = "```\n╔════════════════════════════════════════════════════╗\n"
-    header += "║              MATCHMAKING LEADERBOARD               ║\n"
-    header += "╠════════════════════════════════════════════════════╣\n```"
+    embed = discord.Embed(
+        title="Valorant Mobile India Matchmaking MMR Leaderboard",
+        color=0x2B2D31,
+        description=""
+    )
     
-    # Build player list with clean formatting
-    player_lines = []
+    # Build description with all players in NeatQueue format
+    description_lines = []
     for idx, player in enumerate(players, start=offset + 1):
-        # Get player name (truncate if too long)
-        player_name = player['player_ign'] or player['discord_username'] or f"User{player['user_id']}"
-        player_name = player_name[:18]  # Limit length for alignment
+        # Get rank indicator (green/red triangle)
+        rank_indicator = "▲" if player['streak'] >= 0 else "▼"
         
-        # Get stats
+        # Get player name
+        player_name = player['player_ign'] or player['discord_username'] or f"User{player['user_id']}"
+        
+        # Format: ▲ rank. name (MMR) (W-L) - exactly like NeatQueue
         mmr = player['mmr']
         wins = player['wins']
         losses = player['losses']
-        winrate = player['winrate']
-        streak = player['streak']
         
-        # Format rank with padding
-        rank_str = f"#{idx}".ljust(4)
-        
-        # Format name with padding
-        name_str = player_name.ljust(20)
-        
-        # Format MMR
-        mmr_str = f"{mmr}".rjust(4)
-        
-        # Format record
-        record_str = f"{wins}W-{losses}L".ljust(10)
-        
-        # Format winrate
-        wr_str = f"{winrate:.0f}%".rjust(4)
-        
-        # Streak indicator
-        if streak > 0:
-            streak_str = f"+{streak}"
-        elif streak < 0:
-            streak_str = f"{streak}"
-        else:
-            streak_str = "±0"
-        streak_str = streak_str.rjust(4)
-        
-        # Clean line format
-        line = f"`{rank_str}` **{name_str}** `{mmr_str}` `{record_str}` `{wr_str}` `{streak_str}`"
-        player_lines.append(line)
+        line = f"{rank_indicator} **{idx}.** {player_name} ({mmr}) ({wins}-{losses})"
+        description_lines.append(line)
     
-    # Footer with box design
-    footer = "```\n╚════════════════════════════════════════════════════╝\n```"
-    
-    # Build embed
-    embed = discord.Embed(
-        title="",
-        description=header + "\n" + "\n".join(player_lines) + "\n\n" + footer,
-        color=0x1a1a1a
-    )
-    
-    # Add field for legend
-    legend = "`Rank` **Player Name**       `MMR` `Record`    `WR%` `Streak`"
-    embed.add_field(name="", value=legend, inline=False)
-    
-    embed.set_footer(text=f"Page {page} of {total_pages} • Updated")
+    embed.description = "\n".join(description_lines)
+    embed.set_footer(text=f"Page {page} • Updated at")
     embed.timestamp = discord.utils.utcnow()
-    
     return embed
 
 async def update_all_leaderboards():
