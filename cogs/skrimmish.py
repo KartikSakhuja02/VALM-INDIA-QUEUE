@@ -509,14 +509,14 @@ BOTTOM_SCORE: 8"""
                     # Add winner info with IGN
                     result_embed.add_field(
                         name=f"**{winner_ign}**",
-                        value=f"{winner_user.mention} {winner_ign}\n+60.0 ({winner_score}.0)",
+                        value=f"{winner_user.mention}\n**Score:** {winner_score}",
                         inline=True
                     )
                     
                     # Add loser info with IGN  
                     result_embed.add_field(
                         name=f"**{loser_ign}**",
-                        value=f"{loser_user.mention} {loser_ign}\n-60.0 ({loser_score}.0)",
+                        value=f"{loser_user.mention}\n**Score:** {loser_score}",
                         inline=True
                     )
                     
@@ -2430,7 +2430,7 @@ BOTTOM_SCORE: 8"""
                 winner_mention = winner_user.mention if winner_user else f"@{winner_ign}"
                 result_embed.add_field(
                     name=f"**{winner_ign}**",
-                    value=f"{winner_mention} {winner_ign}\n+60.0 ({winner_score}.0)",
+                    value=f"{winner_mention}\n**Score:** {winner_score}",
                     inline=True
                 )
                 
@@ -2438,7 +2438,7 @@ BOTTOM_SCORE: 8"""
                 loser_mention = loser_user.mention if loser_user else f"@{loser_ign}"
                 result_embed.add_field(
                     name=f"**{loser_ign}**",
-                    value=f"{loser_mention} {loser_ign}\n-60.0 ({loser_score}.0)",
+                    value=f"{loser_mention}\n**Score:** {loser_score}",
                     inline=True
                 )
                 
