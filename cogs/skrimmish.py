@@ -2263,6 +2263,54 @@ class SkrimmishCog(commands.Cog):
                 ephemeral=True
             )
     
+    @app_commands.command(name="admin-set-ign", description="[Admin] Set or update a player's in-game name")
+    @app_commands.describe(
+        player="The player to set IGN for",
+        ign="The in-game name to set"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def admin_set_ign(self, interaction: discord.Interaction, player: discord.Member, ign: str):
+        """Admin command to set or update any player's IGN"""
+        await interaction.response.defer(ephemeral=True)
+        
+        user_id = player.id
+        discord_username = str(player)
+        
+        # Check if player is already registered
+        is_registered = await db.is_player_registered(user_id)
+        
+        # Register or update player
+        success, message = await db.register_player(user_id, discord_username, ign)
+        
+        if success:
+            if is_registered:
+                embed = discord.Embed(
+                    title="✅ IGN Updated",
+                    description=f"{player.mention}'s in-game name has been updated to: **{ign}**",
+                    color=0xED4245
+                )
+            else:
+                embed = discord.Embed(
+                    title="✅ Player Registered",
+                    description=f"{player.mention} has been registered with IGN: **{ign}**",
+                    color=0x00FF00
+                )
+                embed.add_field(name="Starting Stats", value="MMR: 700\nGames: 0\nWins: 0\nLosses: 0", inline=False)
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+            # Assign initial rank role for new players (starting MMR is 700 = Iron)
+            if not is_registered:
+                await update_player_rank_role(interaction.guild, user_id, 700)
+            
+            # Update all active leaderboards to show new/updated player
+            await update_all_leaderboards()
+        else:
+            await interaction.followup.send(
+                f"❌ Failed to set IGN: {message}",
+                ephemeral=True
+            )
+    
     @app_commands.command(name="test-ocr", description="Test OCR on a Valorant Mobile scoreboard screenshot")
     async def test_ocr(self, interaction: discord.Interaction):
         """Test OCR functionality on a screenshot without updating stats"""
