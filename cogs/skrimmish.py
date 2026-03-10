@@ -1573,7 +1573,7 @@ class QueueView(discord.ui.View):
                     )
                     embed.add_field(
                         name="",
-                        value="**Queue 0/10**\n\n",
+                        value="**Queue 0/2**\n\n",
                         inline=False
                     )
                     embed.set_image(url="attachment://valm_india_banner.jpg")
