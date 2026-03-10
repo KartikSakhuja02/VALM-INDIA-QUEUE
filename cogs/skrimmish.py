@@ -548,7 +548,7 @@ BOTTOM_SCORE: 8"""
                         winner_user.display_name,
                         loser_user.id,
                         loser_user.display_name,
-                        self.view.bot
+                        self.bot
                     )
                     
                     # Send result message
