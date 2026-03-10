@@ -1355,12 +1355,10 @@ class QueueButton(discord.ui.Button):
             # Format as 4 digits: 0001, 0002, etc.
             match_name = f"{match_number:04d}-scrimmish"
             
-            # Get the guild and separate categories for text and voice
+            # Get the guild and category
             guild = interaction.guild
-            text_category_id = int(os.getenv('MATCH_TEXT_CATEGORY_ID', 0))
-            voice_category_id = int(os.getenv('MATCH_VOICE_CATEGORY_ID', 0))
-            text_category = guild.get_channel(text_category_id) if text_category_id else None
-            voice_category = guild.get_channel(voice_category_id) if voice_category_id else None
+            category_id = int(os.getenv('MATCH_CATEGORY_ID', 0))
+            category = guild.get_channel(category_id) if category_id else None
             
             # Get the player members
             member1 = guild.get_member(player1['user_id'])
@@ -1374,17 +1372,17 @@ class QueueButton(discord.ui.Button):
                 guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True, view_channel=True)
             }
             
-            # Create private text channel in text category
+            # Create private text channel
             text_channel = await guild.create_text_channel(
                 name=match_name,
-                category=text_category,
+                category=category,
                 overwrites=overwrites
             )
             
-            # Create private voice channel in voice category
+            # Create private voice channel
             voice_channel = await guild.create_voice_channel(
                 name=match_name,
-                category=voice_category,
+                category=category,
                 overwrites=overwrites
             )
             
