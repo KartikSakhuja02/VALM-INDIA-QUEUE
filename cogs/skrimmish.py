@@ -1372,20 +1372,18 @@ class QueueButton(discord.ui.Button):
                 guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True, view_channel=True)
             }
             
-            # Create private text channel with 📝 prefix for organization
+            # Create private text channel - same name as voice for easy pairing
             text_channel = await guild.create_text_channel(
-                name=f"📝-{match_name}",
+                name=f"{match_number:04d}-queue",
                 category=category,
-                overwrites=overwrites,
-                position=0  # Position at top of text channels
+                overwrites=overwrites
             )
             
-            # Create private voice channel with 🔊 prefix for organization
+            # Create private voice channel - same name as text for easy pairing
             voice_channel = await guild.create_voice_channel(
-                name=f"🔊-{match_name}",
+                name=f"{match_number:04d}-queue",
                 category=category,
-                overwrites=overwrites,
-                position=0  # Position at top of voice channels
+                overwrites=overwrites
             )
             
             # Store match info with vote tracking
