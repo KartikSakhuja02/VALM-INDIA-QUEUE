@@ -538,7 +538,7 @@ BOTTOM_SCORE: 8"""
                     result_embed.set_image(url=attachment.url)
                     
                     # Add timestamp
-                    result_embed.timestamp = datetime.utcnow()
+                    result_embed.timestamp = discord.utils.utcnow()
                     result_embed.set_footer(text="Vote for the MVP below! 🏆")
                     
                     # Create MVP voting view
@@ -598,7 +598,7 @@ BOTTOM_SCORE: 8"""
                                 value=f"[View in {results_channel.mention}]({result_message.jump_url})",
                                 inline=False
                             )
-                            log_embed.timestamp = datetime.utcnow()
+                            log_embed.timestamp = discord.utils.utcnow()
                             await logs_channel.send(embed=log_embed)
             
             # Update all active leaderboards
@@ -1293,7 +1293,7 @@ class QueueButton(discord.ui.Button):
                     color=0x00FF00
                 )
                 log_embed.add_field(name="Queue Size", value=f"{len(queue)}/2", inline=True)
-                log_embed.timestamp = datetime.utcnow()
+                log_embed.timestamp = discord.utils.utcnow()
                 await logs_channel.send(embed=log_embed)
         
         # Start inactivity timer if this is the first player
@@ -1439,7 +1439,7 @@ class QueueButton(discord.ui.Button):
                         value=f"**Text:** {text_channel.mention}\n**Voice:** {voice_channel.mention}",
                         inline=False
                     )
-                    log_embed.timestamp = datetime.utcnow()
+                    log_embed.timestamp = discord.utils.utcnow()
                     await logs_channel.send(embed=log_embed)
             
             # Increment the match number for next time
@@ -1497,7 +1497,7 @@ class LeaveButton(discord.ui.Button):
                         color=0xFF0000
                     )
                     log_embed.add_field(name="Queue Size", value=f"{len(queue)}/2", inline=True)
-                    log_embed.timestamp = datetime.utcnow()
+                    log_embed.timestamp = discord.utils.utcnow()
                     await logs_channel.send(embed=log_embed)
         else:
             await interaction.response.send_message(
@@ -1567,13 +1567,13 @@ class QueueView(discord.ui.View):
                 channel = guild.get_channel(channel_id)
                 if channel and self.message:
                     embed = discord.Embed(
-                        title="VALM INDIA MATCHMAKING Queue",
-                        description="⏰ **Queue cleared due to inactivity of 60 minutes**\n\nNo second player joined. Please join again to start a new queue.",
-                        color=0xFF6B6B  # Light red
+                        title="Valorant Mobile India Matchmaking Queue",
+                        description="Emptying queue due to 60 minutes of inactivity\nRe-enter the queue if you are still looking to play!",
+                        color=0x2B2D31  # Dark gray
                     )
                     embed.add_field(
                         name="",
-                        value="**Queue 0/2**\n\n",
+                        value="**Queue 0/10**\n\n",
                         inline=False
                     )
                     embed.set_image(url="attachment://valm_india_banner.jpg")
@@ -1594,7 +1594,7 @@ class QueueView(discord.ui.View):
                                 description="Queue was cleared due to 60 minutes of inactivity",
                                 color=0xFF6B6B
                             )
-                            log_embed.timestamp = datetime.utcnow()
+                            log_embed.timestamp = discord.utils.utcnow()
                             await logs_channel.send(embed=log_embed)
                 
                 # Clean up timer reference
@@ -2700,7 +2700,7 @@ BOTTOM_SCORE: 8"""
                     )
                 
                 result_embed.set_image(url=attachment.url)
-                result_embed.timestamp = datetime.utcnow()
+                result_embed.timestamp = discord.utils.utcnow()
                 result_embed.set_footer(text="🧪 TEST RESULT - No stats affected | Vote for MVP below!")
                 
                 # Create MVP view
