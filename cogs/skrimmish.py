@@ -1870,7 +1870,7 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
     """Build the leaderboard embed - FSN style with rank change arrows"""
     if not players:
         embed = discord.Embed(
-            title="FSN INDIA Leaderboard",
+            title="VALM India Leaderboard",
             description="No registered players found!",
             color=0x2B2D31
         )
@@ -1879,7 +1879,7 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
         return embed
     
     embed = discord.Embed(
-        title="FSN INDIA Leaderboard",
+        title="VALM India Leaderboard",
         color=0x2B2D31,
         description=""
     )
