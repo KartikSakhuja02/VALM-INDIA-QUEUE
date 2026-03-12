@@ -1890,15 +1890,13 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
         current_rank = idx
         previous_rank = player.get('previous_rank')
         
-        # Determine rank change arrow
-        # Note: If you want to use custom emoji from GFX folder (upvote.png, downvote.png),
-        # upload them as Discord emoji and replace the arrows below with: <:emoji_name:emoji_id>
+        # Determine rank change arrow using custom Discord emoji
         if previous_rank is None:
             rank_indicator = ""  # New player, no arrow
         elif previous_rank > current_rank:
-            rank_indicator = "⬆️ "  # Rank improved (moved up, lower number = better)
+            rank_indicator = "<:upvote:1481558409718534306> "  # Rank improved (moved up, lower number = better)
         elif previous_rank < current_rank:
-            rank_indicator = "⬇️ "  # Rank decreased (moved down)
+            rank_indicator = "<:downvote:1481558346438934578> "  # Rank decreased (moved down)
         else:
             rank_indicator = "➡️ "  # Rank stayed the same
         
