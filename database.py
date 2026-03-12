@@ -107,6 +107,15 @@ class Database:
             except:
                 pass
             
+            # Add previous_rank column if it doesn't exist (migration)
+            try:
+                await conn.execute('''
+                    ALTER TABLE player_profiles 
+                    ADD COLUMN IF NOT EXISTS previous_rank INTEGER DEFAULT NULL
+                ''')
+            except:
+                pass
+            
             # Create autoping_config table
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS autoping_config (
@@ -387,6 +396,26 @@ class Database:
             
             return updated
     
+    async def update_all_ranks(self):
+        """Update previous_rank for all players based on current leaderboard position"""
+        async with self.pool.acquire() as conn:
+            # Get all players ordered by current rank
+            players = await conn.fetch(
+                '''SELECT user_id, 
+                          ROW_NUMBER() OVER (ORDER BY mmr DESC, wins DESC) as current_rank
+                   FROM player_profiles
+                   ORDER BY mmr DESC, wins DESC'''
+            )
+            
+            # Update each player's previous_rank to their current position
+            for player in players:
+                await conn.execute(
+                    '''UPDATE player_profiles 
+                       SET previous_rank = $1 
+                       WHERE user_id = $2''',
+                    player['current_rank'], player['user_id']
+                )
+    
     async def get_leaderboard(self, limit: int = 10):
         """Get the top players by MMR
         
@@ -421,7 +450,7 @@ class Database:
         async with self.pool.acquire() as conn:
             leaderboard = await conn.fetch(
                 '''SELECT user_id, discord_username, player_ign, mmr, wins, losses, 
-                          games, streak, winrate, peak_mmr, peak_streak
+                          games, streak, winrate, peak_mmr, peak_streak, mvp_count, previous_rank
                    FROM player_profiles 
                    ORDER BY mmr DESC, wins DESC
                    LIMIT $1 OFFSET $2''',

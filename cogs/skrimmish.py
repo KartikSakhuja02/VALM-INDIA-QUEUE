@@ -601,6 +601,9 @@ BOTTOM_SCORE: 8"""
                             log_embed.timestamp = discord.utils.utcnow()
                             await logs_channel.send(embed=log_embed)
             
+            # Update rank tracking before refreshing leaderboards
+            await db.update_all_ranks()
+            
             # Update all active leaderboards
             await update_all_leaderboards()
             
@@ -1810,7 +1813,7 @@ class LeaderboardView(discord.ui.View):
         else:
             await interaction.response.send_message("You're already on the first page!", ephemeral=True)
     
-    @discord.ui.button(label="Refresh", style=discord.ButtonStyle.primary, custom_id="leaderboard_refresh", emoji="🔄")
+    @discord.ui.button(label="Refresh", style=discord.ButtonStyle.primary, custom_id="leaderboard_refresh")
     async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Refresh leaderboard data"""
         await self.update_leaderboard_display(interaction)
@@ -1864,44 +1867,51 @@ class LeaderboardView(discord.ui.View):
             print(f"Error updating leaderboard: {e}")
 
 async def build_leaderboard_embed(players, page: int, total_pages: int, offset: int):
-    """Build the leaderboard embed - NeatQueue style"""
+    """Build the leaderboard embed - FSN style with rank change arrows"""
     if not players:
         embed = discord.Embed(
-            title="Valorant Mobile India Matchmaking MMR Leaderboard",
+            title="FSN INDIA Leaderboard",
             description="No registered players found!",
             color=0x2B2D31
         )
-        embed.set_footer(text=f"Page {page} • Updated at")
+        embed.set_footer(text=f"Last updated")
         embed.timestamp = discord.utils.utcnow()
         return embed
     
     embed = discord.Embed(
-        title="Valorant Mobile India Matchmaking MMR Leaderboard",
+        title="FSN INDIA Leaderboard",
         color=0x2B2D31,
         description=""
     )
     
-    # Build description with all players in NeatQueue format
+    # Build description with all players
     description_lines = []
     for idx, player in enumerate(players, start=offset + 1):
-        # Get rank indicator (green/red triangle)
-        rank_indicator = "▲" if player['streak'] >= 0 else "▼"
+        current_rank = idx
+        previous_rank = player.get('previous_rank')
+        
+        # Determine rank change arrow
+        # Note: If you want to use custom emoji from GFX folder (upvote.png, downvote.png),
+        # upload them as Discord emoji and replace the arrows below with: <:emoji_name:emoji_id>
+        if previous_rank is None:
+            rank_indicator = ""  # New player, no arrow
+        elif previous_rank > current_rank:
+            rank_indicator = "⬆️ "  # Rank improved (moved up, lower number = better)
+        elif previous_rank < current_rank:
+            rank_indicator = "⬇️ "  # Rank decreased (moved down)
+        else:
+            rank_indicator = "➡️ "  # Rank stayed the same
         
         # Get player name
         player_name = player['player_ign'] or player['discord_username'] or f"User{player['user_id']}"
         
-        # Format: ▲ rank. name (MMR) (W-L) | 🏆 MVP - with MVP count
+        # Format: rank. name - MMR
         mmr = player['mmr']
-        wins = player['wins']
-        losses = player['losses']
-        mvp_count = player.get('mvp_count', 0)
-        
-        mvp_display = f" | 🏆 {mvp_count}" if mvp_count > 0 else ""
-        line = f"{rank_indicator} **{idx}.** {player_name} ({mmr}) ({wins}-{losses}){mvp_display}"
+        line = f"{rank_indicator}**{idx:2d}.** {player_name:<20s} – **{mmr}**"
         description_lines.append(line)
     
     embed.description = "\n".join(description_lines)
-    embed.set_footer(text=f"Page {page} • Updated at")
+    embed.set_footer(text=f"Last updated")
     embed.timestamp = discord.utils.utcnow()
     return embed
 
@@ -3086,6 +3096,9 @@ BOTTOM_SCORE: 8"""
         
         # Reset all player stats
         reset_count = await db.reset_all_player_stats()
+        
+        # Update rank tracking before refreshing leaderboards
+        await db.update_all_ranks()
         
         # Update all active leaderboards
         await update_all_leaderboards()
