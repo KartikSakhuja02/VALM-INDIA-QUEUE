@@ -1570,7 +1570,7 @@ class QueueView(discord.ui.View):
                 channel = guild.get_channel(channel_id)
                 if channel and self.message:
                     embed = discord.Embed(
-                        title="VEGA Assassins Matchmaking Queue",
+                        title="Valorant Mobile India Matchmaking Queue",
                         description="Emptying queue due to 60 minutes of inactivity\nRe-enter the queue if you are still looking to play!",
                         color=0x2B2D31  # Dark gray
                     )
@@ -1626,7 +1626,7 @@ class QueueView(discord.ui.View):
         
         # Create embed with clean NeatQueue style
         embed = discord.Embed(
-            title="VEGA ASSASSINS MATCHMAKING Queue",
+            title="VALM INDIA MATCHMAKING Queue",
             color=0xED4245  # Discord red
         )
         
@@ -1870,7 +1870,7 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
     """Build the leaderboard embed - FSN style with rank change arrows"""
     if not players:
         embed = discord.Embed(
-            title="VEGA Assassins Leaderboard",
+            title="VALM India Leaderboard",
             description="No registered players found!",
             color=0x2B2D31
         )
@@ -1879,7 +1879,7 @@ async def build_leaderboard_embed(players, page: int, total_pages: int, offset: 
         return embed
     
     embed = discord.Embed(
-        title="VEGA Assassins Leaderboard",
+        title="VALM India Leaderboard",
         color=0x2B2D31,
         description=""
     )
@@ -1993,7 +1993,7 @@ class SkrimmishCog(commands.Cog):
             
             # Create the queue embed with NeatQueue style
             embed = discord.Embed(
-                title="VEGA ASSASSINS MATCHMAKING Queue",
+                title="VALM INDIA MATCHMAKING Queue",
                 color=0xED4245  # Discord red
             )
             
@@ -2012,21 +2012,18 @@ class SkrimmishCog(commands.Cog):
                 inline=False
             )
             
-            # Set the banner image and logo thumbnail
+            # Set the banner image
             embed.set_image(url="attachment://valm_india_banner.jpg")
-            embed.set_thumbnail(url="attachment://LOGO.jpeg")
             
             # Add timestamp
             embed.timestamp = discord.utils.utcnow()
             
-            # Load the banner image and logo
+            # Load the banner image
             banner_path = os.path.join(os.getcwd(), 'GFX', 'valm_india_banner.jpg')
-            logo_path = os.path.join(os.getcwd(), 'GFX', 'LOGO.jpeg')
             banner_file = discord.File(banner_path, filename='valm_india_banner.jpg')
-            logo_file = discord.File(logo_path, filename='LOGO.jpeg')
             
-            # Send the new message with the banner and logo
-            message = await channel.send(files=[banner_file, logo_file], embed=embed, view=self.queue_view)
+            # Send the new message with the banner
+            message = await channel.send(file=banner_file, embed=embed, view=self.queue_view)
             self.queue_view.message = message
             
             # Store the new message ID in database
@@ -2135,7 +2132,7 @@ class SkrimmishCog(commands.Cog):
         
         # Create the queue embed with NeatQueue style
         embed = discord.Embed(
-            title="VEGA ASSASSINS MATCHMAKING Queue",
+            title="VALM INDIA MATCHMAKING Queue",
             color=0xED4245  # Discord red
         )
         
@@ -2154,22 +2151,19 @@ class SkrimmishCog(commands.Cog):
             inline=False
         )
         
-        # Set the banner image and logo thumbnail
+        # Set the banner image
         embed.set_image(url="attachment://valm_india_banner.jpg")
-        embed.set_thumbnail(url="attachment://LOGO.jpeg")
         
         # Add timestamp
         embed.timestamp = discord.utils.utcnow()
         
-        # Load the banner image and logo
+        # Load the banner image
         banner_path = os.path.join(os.getcwd(), 'GFX', 'valm_india_banner.jpg')
-        logo_path = os.path.join(os.getcwd(), 'GFX', 'LOGO.jpeg')
         banner_file = discord.File(banner_path, filename='valm_india_banner.jpg')
-        logo_file = discord.File(logo_path, filename='LOGO.jpeg')
         
-        # Send the message with buttons, banner and logo
+        # Send the message with buttons and banner
         await interaction.response.send_message(
-            files=[banner_file, logo_file],
+            file=banner_file,
             embed=embed,
             view=self.queue_view
         )
