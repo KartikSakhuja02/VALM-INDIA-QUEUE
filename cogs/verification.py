@@ -40,7 +40,7 @@ class VerificationButton(discord.ui.Button):
             embed = discord.Embed(
                 title="✅ Verification Successful",
                 description=(
-                    f"Welcome to **VALM India Queue**!\n\n"
+                    f"Welcome to **VEGA Assassins**!\n\n"
                     f"You now have the {role.mention} role and can participate in skrimmish matches.\n\n"
                     f"**Next Steps:**\n"
                     f"• Register your IGN with `/ign <your_name>`\n"
@@ -105,9 +105,9 @@ class VerificationCog(commands.Cog):
         
         # Create embed
         embed = discord.Embed(
-            title="🎯 VALM India Queue - Verification",
+            title="🎯 VEGA Assassins - Verification",
             description=(
-                "**Welcome to Valorant Mobile India's Premier Matchmaking System!**\n\n"
+                "**Welcome to VEGA Assassins' Premier Matchmaking System!**\n\n"
                 "Get verified to unlock access to competitive skrimmish matches, "
                 "track your progress, and climb the leaderboards.\n\n"
                 "━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -124,7 +124,7 @@ class VerificationCog(commands.Cog):
         )
         embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
         embed.set_footer(
-            text="VALM India • Competitive Skrimmish Matchmaking",
+            text="VEGA Assassins • Competitive Skrimmish Matchmaking",
             icon_url=interaction.guild.icon.url if interaction.guild.icon else None
         )
         
