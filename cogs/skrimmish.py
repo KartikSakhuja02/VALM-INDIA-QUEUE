@@ -1246,6 +1246,147 @@ class SubRequestView(discord.ui.View):
             
             await asyncio.sleep(check_interval)
 
+
+class DMRoleSelectForDM(discord.ui.Select):
+    """Role dropdown used by /dm command."""
+
+    def __init__(self, admin_user_id: int, roles: list[discord.Role], row: int = 0):
+        self.admin_user_id = admin_user_id
+        options = [
+            discord.SelectOption(
+                label=role.name[:100],
+                value=str(role.id),
+                description=f"{len([member for member in role.members if not member.bot])} members"
+            )
+            for role in roles
+        ]
+        super().__init__(
+            placeholder="Select a role to DM...",
+            options=options,
+            min_values=1,
+            max_values=1,
+            custom_id=f"dm_role_select_for_dm_{row}",
+            row=row,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.admin_user_id:
+            await interaction.response.send_message("❌ You cannot use this.", ephemeral=True)
+            return
+
+        role_id = int(self.values[0])
+        role = interaction.guild.get_role(role_id) if interaction.guild else None
+        if role is None:
+            await interaction.response.send_message("❌ Role not found.", ephemeral=True)
+            return
+
+        modal = DMRoleMessageForDMModal(self.admin_user_id, role_id)
+        await interaction.response.send_modal(modal)
+
+
+class DMRoleSelectForDMView(discord.ui.View):
+    """View wrapping role dropdown for /dm command."""
+
+    def __init__(self, admin_user_id: int, roles: list[discord.Role], page: int = 0):
+        super().__init__(timeout=300)
+        self.admin_user_id = admin_user_id
+        self.roles = roles
+        self.roles_per_dropdown = 25
+        self.dropdowns_per_page = 4
+        self.roles_per_page = self.roles_per_dropdown * self.dropdowns_per_page
+        self.total_pages = max(1, (len(self.roles) + self.roles_per_page - 1) // self.roles_per_page)
+        self.page = max(0, min(page, self.total_pages - 1))
+
+        page_start = self.page * self.roles_per_page
+        page_roles = self.roles[page_start: page_start + self.roles_per_page]
+
+        for index in range(0, len(page_roles), self.roles_per_dropdown):
+            chunk = page_roles[index:index + self.roles_per_dropdown]
+            row = index // self.roles_per_dropdown
+            self.add_item(DMRoleSelectForDM(admin_user_id, chunk, row=row))
+
+    @discord.ui.button(label="⬅️ Prev", style=discord.ButtonStyle.secondary, row=4)
+    async def prev_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.admin_user_id:
+            await interaction.response.send_message("❌ You cannot use this.", ephemeral=True)
+            return
+
+        if self.page <= 0:
+            await interaction.response.send_message("Already on the first page.", ephemeral=True)
+            return
+
+        new_view = DMRoleSelectForDMView(self.admin_user_id, self.roles, page=self.page - 1)
+        embed = discord.Embed(
+            title="📤 DM - Step 1/2",
+            description=(
+                "Select the role you want to DM.\n"
+                f"Page **{new_view.page + 1}/{new_view.total_pages}**"
+            ),
+            color=discord.Color.blue(),
+        )
+        await interaction.response.edit_message(embed=embed, view=new_view)
+
+    @discord.ui.button(label="➡️ Next", style=discord.ButtonStyle.secondary, row=4)
+    async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.admin_user_id:
+            await interaction.response.send_message("❌ You cannot use this.", ephemeral=True)
+            return
+
+        if self.page >= self.total_pages - 1:
+            await interaction.response.send_message("Already on the last page.", ephemeral=True)
+            return
+
+        new_view = DMRoleSelectForDMView(self.admin_user_id, self.roles, page=self.page + 1)
+        embed = discord.Embed(
+            title="📤 DM - Step 1/2",
+            description=(
+                "Select the role you want to DM.\n"
+                f"Page **{new_view.page + 1}/{new_view.total_pages}**"
+            ),
+            color=discord.Color.blue(),
+        )
+        await interaction.response.edit_message(embed=embed, view=new_view)
+
+
+class DMRoleMessageForDMModal(discord.ui.Modal, title="Send DM to Role"):
+    """Modal for DM message after role selection."""
+
+    message = discord.ui.TextInput(
+        label="Message",
+        style=discord.TextStyle.paragraph,
+        placeholder="Enter your message",
+        required=True,
+        max_length=2000,
+    )
+
+    def __init__(self, admin_user_id: int, role_id: int):
+        super().__init__()
+        self.admin_user_id = admin_user_id
+        self.role_id = role_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if interaction.user.id != self.admin_user_id:
+            await interaction.response.send_message("❌ You cannot use this.", ephemeral=True)
+            return
+
+        if interaction.guild is None:
+            await interaction.response.send_message("❌ This command must be used in a server.", ephemeral=True)
+            return
+
+        role = interaction.guild.get_role(self.role_id)
+        if role is None:
+            await interaction.response.send_message("❌ Role not found.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        skrimmish_cog = interaction.client.get_cog("SkrimmishCog")
+        if skrimmish_cog is None:
+            await interaction.followup.send("❌ Skrimmish cog not loaded.", ephemeral=True)
+            return
+
+        await skrimmish_cog._send_role_dm_parallel(interaction, role, str(self.message))
+
 class QueueButton(discord.ui.Button):
     """Button for joining the queue"""
     def __init__(self):
@@ -2106,6 +2247,125 @@ class SkrimmishCog(commands.Cog):
         
         except Exception as e:
             print(f"❌ Failed to load persistent leaderboards: {e}")
+
+    async def _send_role_dm_parallel(self, interaction: discord.Interaction, role: discord.Role, message_content: str):
+        """Send DMs to role members with conservative pacing and progress updates."""
+        recipients = [member for member in role.members if not member.bot]
+
+        if not recipients:
+            await interaction.followup.send(
+                f"⚠️ No non-bot members found in {role.mention}.",
+                ephemeral=True,
+            )
+            return
+
+        total = len(recipients)
+        sent = 0
+        failed = 0
+        failure_reasons = {}
+
+        progress_embed = discord.Embed(
+            title="📨 Sending DMs...",
+            description=(
+                f"Role: {role.mention}\n"
+                f"Total: **{total}**\n"
+                f"✅ Sent: **0**\n"
+                f"❌ Failed: **0**\n"
+                f"⏳ Left: **{total}**"
+            ),
+            color=discord.Color.blue(),
+            timestamp=datetime.utcnow(),
+        )
+        progress_message = await interaction.followup.send(embed=progress_embed, ephemeral=True)
+
+        async def send_one(member: discord.Member) -> tuple[bool, str | None]:
+            retries = 6
+            for attempt in range(retries):
+                try:
+                    await member.send(content=message_content)
+                    return True, None
+                except discord.Forbidden:
+                    return False, "forbidden_or_dms_closed"
+                except discord.HTTPException as exc:
+                    status = getattr(exc, "status", None)
+                    retry_after = getattr(exc, "retry_after", None)
+                    if status in {429, 500, 502, 503, 504} and attempt < retries - 1:
+                        await asyncio.sleep(float(retry_after) + 0.3 if retry_after is not None else 1.5 * (attempt + 1))
+                        continue
+                    return False, f"http_{status}"
+                except Exception as exc:
+                    return False, f"other_{type(exc).__name__}"
+            return False, "unknown"
+
+        for index, member in enumerate(recipients, start=1):
+            ok, reason = await send_one(member)
+            if ok:
+                sent += 1
+            else:
+                failed += 1
+                if reason:
+                    failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
+
+            await asyncio.sleep(1.0)
+
+            if index % 25 == 0 or index == total:
+                left = total - index
+                top_reason_line = ""
+                if failure_reasons:
+                    top_reason, top_count = sorted(failure_reasons.items(), key=lambda item: item[1], reverse=True)[0]
+                    top_reason_line = f"\n🧾 Top Fail: **{top_reason}** ({top_count})"
+                progress_embed = discord.Embed(
+                    title="📨 Sending DMs...",
+                    description=(
+                        f"Role: {role.mention}\n"
+                        f"Total: **{total}**\n"
+                        f"✅ Sent: **{sent}**\n"
+                        f"❌ Failed: **{failed}**\n"
+                        f"⏳ Left: **{left}**"
+                        f"{top_reason_line}"
+                    ),
+                    color=discord.Color.blue(),
+                    timestamp=datetime.utcnow(),
+                )
+                try:
+                    await progress_message.edit(embed=progress_embed)
+                except Exception:
+                    pass
+
+        summary_embed = discord.Embed(
+            title="✅ DM Completed",
+            description=(
+                f"Role: {role.mention}\n"
+                f"Total: **{total}**\n"
+                f"✅ Sent: **{sent}**\n"
+                f"❌ Failed: **{failed}**\n"
+                f"⏳ Left: **0**"
+            ),
+            color=discord.Color.green(),
+            timestamp=datetime.utcnow(),
+        )
+
+        if failure_reasons:
+            top_reasons = sorted(failure_reasons.items(), key=lambda item: item[1], reverse=True)[:5]
+            reasons_text = "\n".join([f"• `{reason}`: {count}" for reason, count in top_reasons])
+            summary_embed.add_field(name="Top Failure Reasons", value=reasons_text, inline=False)
+
+        await interaction.followup.send(embed=summary_embed, ephemeral=True)
+
+        logs_channel_id = os.getenv('LOGS_CHANNEL_ID')
+        if logs_channel_id and interaction.guild:
+            logs_channel = interaction.guild.get_channel(int(logs_channel_id))
+            if logs_channel:
+                log_embed = discord.Embed(
+                    title="📨 Admin DM Completed",
+                    color=0x5865F2,
+                    timestamp=datetime.utcnow(),
+                )
+                log_embed.add_field(name="Admin", value=interaction.user.mention, inline=False)
+                log_embed.add_field(name="Role", value=f"{role.name} (`{role.id}`)", inline=False)
+                log_embed.add_field(name="Sent", value=str(sent), inline=True)
+                log_embed.add_field(name="Failed", value=str(failed), inline=True)
+                await logs_channel.send(embed=log_embed)
     
     @app_commands.command(name="setup_queue", description="Setup the skrimmish queue in this channel")
     @app_commands.checks.has_permissions(administrator=True)
@@ -2177,6 +2437,50 @@ class SkrimmishCog(commands.Cog):
         await db.set_config('queue_channel_id', str(interaction.channel_id))
         
         print(f"✅ Queue setup in channel {interaction.channel_id}")
+
+    @app_commands.command(name="dm", description="[Admin] Send DM to a selected role")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def dm_users(self, interaction: discord.Interaction):
+        """Open role dropdown, then collect message and send DMs."""
+        try:
+            if interaction.guild is None:
+                await interaction.response.send_message(
+                    "❌ This command can only be used in a server.",
+                    ephemeral=True
+                )
+                return
+
+            await interaction.response.defer(ephemeral=True)
+
+            eligible_roles = [
+                role for role in interaction.guild.roles
+                if role != interaction.guild.default_role and any(not member.bot for member in role.members)
+            ]
+            eligible_roles.sort(key=lambda role: role.position, reverse=True)
+
+            if not eligible_roles:
+                await interaction.followup.send(
+                    "⚠️ No eligible roles with non-bot members found.",
+                    ephemeral=True,
+                )
+                return
+
+            embed = discord.Embed(
+                title="📤 DM - Step 1/2",
+                description=(
+                    "Select the role you want to DM.\n"
+                    f"Page **1/{max(1, (len(eligible_roles) + 99) // 100)}**"
+                ),
+                color=discord.Color.blue(),
+            )
+            view = DMRoleSelectForDMView(interaction.user.id, eligible_roles, page=0)
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        except Exception as e:
+            try:
+                await interaction.followup.send(f"❌ Failed to open DM flow: {e}", ephemeral=True)
+            except Exception:
+                pass
+            print(f"Error in /dm: {e}")
     
     @app_commands.command(name="clear_queue", description="Clear the entire queue")
     @app_commands.checks.has_permissions(administrator=True)
